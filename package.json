@@ -4,7 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "immediately.run": {
-    "requireLatest": "stale_ok"
+    "requireLatest": "stale_ok",
+    "resolveFromRegistry": [
+      "@immediately-run/sdk"
+    ]
   },
   "scripts": {
     "dev": "vite",
@@ -13,7 +16,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@immediately-run/sdk": "^0.2.2",
+    "@immediately-run/sdk": "0.2.8",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },
