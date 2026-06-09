@@ -43,6 +43,13 @@ jobs:
         with:
           node-version: 22
 
+      # Auto-provision GitHub Pages so the deploy job can publish even on a
+      # freshly-created repo. Without this, `deploy-pages` 404s every run until
+      # someone manually flips Settings → Pages → Source: GitHub Actions.
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+        with:
+          enablement: true
+
       - name: Build cache zip
         run: |
           npx -y @immediately-run/cli@0.2.0 cache-zip \
