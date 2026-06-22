@@ -51,7 +51,10 @@ export default function SpaceManager() {
   }, []);
 
   useEffect(() => {
-    void loadSpaces();
+    const run = async () => {
+      await loadSpaces();
+    };
+    void run();
   }, [loadSpaces]);
 
   return (
@@ -102,7 +105,10 @@ function AuditView() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const run = async () => {
+      await load();
+    };
+    void run();
   }, [load]);
 
   const onRevoke = async (g: GrantRecord) => {
@@ -171,7 +177,10 @@ function ManageModal({ space, onClose }: { space: SpaceInfo; onClose: () => void
   }, [space.spaceId]);
 
   useEffect(() => {
-    void refresh();
+    const run = async () => {
+      await refresh();
+    };
+    void run();
   }, [refresh]);
 
   const ownerCount = (members ?? []).filter((m) => m.role === "owner").length;
