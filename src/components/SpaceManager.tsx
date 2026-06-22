@@ -32,7 +32,7 @@ const decodeApp = (appKey: string): string => {
     return appKey;
   }
 };
-const labelOf = (m: Member): string => (m.login ? `@${m.login}` : `#${uidOf(m.principal).split(":").slice(1).join(":") || uidOf(m.principal)}`);
+const labelOf = (m: Member): string => (m.login ? `@${m.login}` : `#${uidOf(m.grantee).split(":").slice(1).join(":") || uidOf(m.grantee)}`);
 
 export default function SpaceManager() {
   const [spaces, setSpaces] = useState<SpaceInfo[] | null>(null);
@@ -205,7 +205,7 @@ function ManageModal({ space, onClose }: { space: SpaceInfo; onClose: () => void
   const onRole = async (m: Member, role: Role) => {
     setErr(null);
     try {
-      await setSpaceRole(space.spaceId, uidOf(m.principal), role);
+      await setSpaceRole(space.spaceId, uidOf(m.grantee), role);
       await refresh();
     } catch (e) {
       setErr((e as { code?: string })?.code === "owner-lockout" ? "A space must keep an owner." : "Couldn’t change role.");
@@ -215,7 +215,7 @@ function ManageModal({ space, onClose }: { space: SpaceInfo; onClose: () => void
   const onRemove = async (m: Member) => {
     setErr(null);
     try {
-      await unshareSpace(space.spaceId, uidOf(m.principal));
+      await unshareSpace(space.spaceId, uidOf(m.grantee));
       await refresh();
     } catch (e) {
       setErr((e as { code?: string })?.code === "owner-lockout" ? "A space must keep an owner." : "Couldn’t remove.");
@@ -253,7 +253,7 @@ function ManageModal({ space, onClose }: { space: SpaceInfo; onClose: () => void
             members.map((m) => {
               const lastOwner = m.role === "owner" && ownerCount <= 1;
               return (
-                <div key={m.principal} className="sm-member">
+                <div key={m.grantee} className="sm-member">
                   {m.avatarUrl ? <img className="sm-av" src={m.avatarUrl} alt="" /> : <span className="sm-av sm-av-ph" />}
                   <span className="sm-member-name">{labelOf(m)}</span>
                   <select
