@@ -12,6 +12,9 @@ import {
   setSpaceRole,
   listGrants,
   revokeGrant,
+  createSpace,
+  useAuth,
+  useRegion,
   type SpaceInfo,
   type Member,
   type Role,
@@ -38,6 +41,13 @@ export default function SpaceManager() {
   const [spaces, setSpaces] = useState<SpaceInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<SpaceInfo | null>(null);
+  // SPACES_UI_SPEC §5 / R-SPACES-7: this app renders in two surfaces. The narrow
+  // `panel.spaces` column inside the workbench, and — at its own deep-linkable route
+  // (`/spaces`) — a standalone full-tab surface bound as `page.spaces`. Any region
+  // that is not the narrow panel (the full-tab binding, a fork, or `null` for plain
+  // `vite dev`) gets the roomier full-screen layout.
+  const region = useRegion();
+  const fullTab = region !== "panel.spaces";
 
   const loadSpaces = useCallback(async () => {
     setError(null);
@@ -58,9 +68,10 @@ export default function SpaceManager() {
   }, [loadSpaces]);
 
   return (
-    <div className="sm">
+    <div className={fullTab ? "sm sm-full" : "sm"}>
       <header className="sm-hd">
         <span className="sm-title">Spaces</span>
+        {fullTab && <CreateSpaceEntry onCreated={loadSpaces} />}
       </header>
       {error && <div className="sm-msg">{error}</div>}
       {spaces === null ? (
@@ -87,6 +98,46 @@ export default function SpaceManager() {
       {selected && <ManageModal space={selected} onClose={() => setSelected(null)} />}
       <AuditView />
     </div>
+  );
+}
+
+// SPACES_UI_SPEC §5 (R-SPACES-7) "create a space" entry — only on the full-tab
+// surface (the in-workbench modal is the other entry point). It drives the SAME host
+// `createSpace()` consent path (FILE_SHARING §6/§9.3): the host owns the quota gate,
+// the first-create-per-app consent, and the write ordering. This app does NOT paint
+// any authorization chrome — it just calls `createSpace()` and reflects the result.
+// Gated on signed-in: creating storage in the user's account needs an account.
+function CreateSpaceEntry({ onCreated }: { onCreated: () => void | Promise<void> }) {
+  const { status } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Until the host reports auth, render nothing rather than a button that can't work.
+  if (status !== "signed-in") return null;
+
+  const onCreate = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await createSpace();
+      await onCreated();
+    } catch (e) {
+      const code = (e as { code?: string })?.code;
+      // `cancelled` is the user dismissing the host consent — calm, not an error.
+      if (code === "cancelled") return;
+      setErr(code === "quota-exceeded" ? "Space limit reached." : "Couldn’t create a space.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span className="sm-create">
+      <button type="button" className="sm-add" onClick={onCreate} disabled={busy}>
+        {busy ? "Creating…" : "Create a space"}
+      </button>
+      {err && <span className="sm-err">{err}</span>}
+    </span>
   );
 }
 
