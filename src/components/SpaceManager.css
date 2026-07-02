@@ -85,3 +85,13 @@ button:disabled { opacity: .5; cursor: default; }
 .sm-audit-grant { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
 .sm-audit-space { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sm-audit-scope { font-size: 11px; color: var(--sm-muted, #9aa0a6); }
+
+/* §6.4 Invitations inbox (invitee) + owner pending list. */
+.sm-invites { margin: 4px 0 14px; border-bottom: 1px solid var(--sm-border, #2c2f34); padding-bottom: 12px; }
+.sm-invites-h { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--sm-muted, #9aa0a6); }
+.sm-invite-list { list-style: none; margin: 0; padding: 0; }
+.sm-invite-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.sm-invite-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm-accept { padding: 3px 10px; border-radius: 6px; border: 1px solid transparent; background: var(--sm-accent, #4f8cff); color: #fff; font-weight: 600; cursor: pointer; }
+.sm-pending { margin-top: 12px; border-top: 1px solid var(--sm-border, #2c2f34); padding-top: 10px; }
+.sm-pending-h { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--sm-muted, #9aa0a6); }

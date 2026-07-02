@@ -7,7 +7,12 @@ import { useCallback, useEffect, useState } from "react";
 import {
   listAllSpaces,
   getSpaceMembers,
-  shareSpace,
+  inviteToSpace,
+  listPendingInvites,
+  revokeInvite,
+  listMyInvites,
+  acceptInvite,
+  declineInvite,
   unshareSpace,
   setSpaceRole,
   listGrants,
@@ -17,6 +22,7 @@ import {
   useRegion,
   type SpaceInfo,
   type Member,
+  type Invite,
   type Role,
   type GrantRecord,
 } from "@immediately-run/sdk";
@@ -36,6 +42,19 @@ const decodeApp = (appKey: string): string => {
   }
 };
 const labelOf = (m: Member): string => (m.login ? `@${m.login}` : `#${uidOf(m.grantee).split(":").slice(1).join(":") || uidOf(m.grantee)}`);
+
+// Owner-written display fields (login/name/avatarUrl on invites + members) are
+// UNTRUSTED (FILE_SHARING §3/§6.4). React escapes text children, so name/handle are
+// safe as `{...}`; an avatarUrl, however, becomes a URL — accept only `https:` so a
+// crafted `javascript:`/`data:` value can never reach an `<img src>`.
+const httpsAvatar = (url: string | undefined): string | undefined => {
+  if (!url) return undefined;
+  try {
+    return new URL(url).protocol === "https:" ? url : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 export default function SpaceManager() {
   const [spaces, setSpaces] = useState<SpaceInfo[] | null>(null);
@@ -74,6 +93,7 @@ export default function SpaceManager() {
         {fullTab && <CreateSpaceEntry onCreated={loadSpaces} />}
       </header>
       {error && <div className="sm-msg">{error}</div>}
+      <InvitationsInbox onAccepted={loadSpaces} />
       {spaces === null ? (
         <div className="sm-msg">Loading…</div>
       ) : spaces.length === 0 && !error ? (
@@ -98,6 +118,101 @@ export default function SpaceManager() {
       {selected && <ManageModal space={selected} onClose={() => setSelected(null)} />}
       <AuditView />
     </div>
+  );
+}
+
+// FILE_SHARING §6.4/§9.8 Invitations inbox: the invitee's pull-based accept surface.
+// A pending invite confers NO access — the user opts in here. Accepting materializes
+// membership and, in the same round-trip, the invite leaves the inbox and the space
+// joins the list (so we refresh both). All owner-written fields are escaped as text
+// (React text children) — never `dangerouslySetInnerHTML`, and an avatar only if it
+// is an `https:` URL. Live-push isn't in the SDK yet (R3-90), so v1 refreshes on
+// window focus (a documented Phase-06 follow-on adds a subscription).
+function InvitationsInbox({ onAccepted }: { onAccepted: () => void | Promise<void> }) {
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setInvites(await listMyInvites());
+    } catch {
+      // No invitations surface for a signed-out / unauthorized caller — stay quiet.
+      setInvites([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    const run = async () => {
+      await refresh();
+    };
+    void run();
+    const onFocus = () => void run();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refresh]);
+
+  const onAccept = async (inv: Invite) => {
+    setBusy(inv.spaceId);
+    try {
+      await acceptInvite(inv.spaceId);
+      // One round-trip removes the inbox row AND adds the space to the list (§6.4).
+      await refresh();
+      await onAccepted();
+    } catch {
+      /* leave the row; the user can retry */
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onDecline = async (inv: Invite) => {
+    setBusy(inv.spaceId);
+    try {
+      await declineInvite(inv.spaceId);
+      await refresh();
+    } catch {
+      /* leave the row */
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (invites.length === 0) return null;
+
+  return (
+    <section className="sm-invites" aria-label="Invitations">
+      <h3 className="sm-invites-h">Invitations</h3>
+      <ul className="sm-invite-list">
+        {invites.map((inv) => {
+          const avatar = httpsAvatar(inv.avatarUrl);
+          return (
+            <li key={inv.spaceId} className="sm-invite-row">
+              {avatar ? <img className="sm-av" src={avatar} alt="" /> : <span className="sm-av sm-av-ph" />}
+              <span className="sm-invite-text">
+                {inv.invitedBy} invited you to{" "}
+                <span className="sm-name">{inv.name ?? "Untitled space"}</span> as {inv.role}
+              </span>
+              <button
+                type="button"
+                className="sm-accept"
+                disabled={busy === inv.spaceId}
+                onClick={() => onAccept(inv)}
+              >
+                {busy === inv.spaceId ? "…" : "Accept"}
+              </button>
+              <button
+                type="button"
+                className="sm-remove"
+                disabled={busy === inv.spaceId}
+                onClick={() => onDecline(inv)}
+              >
+                Decline
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -214,14 +329,24 @@ function AuditView() {
 
 function ManageModal({ space, onClose }: { space: SpaceInfo; onClose: () => void }) {
   const [members, setMembers] = useState<Member[] | null>(null);
+  const [pending, setPending] = useState<Invite[]>([]);
   const [handle, setHandle] = useState("");
   const [addRole, setAddRole] = useState<Role>("writer");
   const [busy, setBusy] = useState(false);
+  const [revoking, setRevoking] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      setMembers(await getSpaceMembers(space.spaceId));
+      // Members (accepted) and pending invitations (offered, not yet accepted) are
+      // disjoint surfaces — a pending invitee is NOT a member (§6.4), so we list
+      // them separately and never double-list.
+      const [m, p] = await Promise.all([
+        getSpaceMembers(space.spaceId),
+        listPendingInvites(space.spaceId).catch(() => [] as Invite[]),
+      ]);
+      setMembers(m);
+      setPending(p);
     } catch {
       setErr("Couldn’t load members.");
     }
@@ -242,14 +367,37 @@ function ManageModal({ space, onClose }: { space: SpaceInfo; onClose: () => void
     setBusy(true);
     setErr(null);
     try {
-      await shareSpace(space.spaceId, h, addRole);
+      // §6.4: create an INVITATION (not a membership). The offer shows under Pending
+      // until the recipient accepts — refresh reflects it there, not under Members.
+      await inviteToSpace(space.spaceId, h, addRole);
       setHandle("");
       await refresh();
     } catch (e) {
       const code = (e as { code?: string })?.code;
-      setErr(code === "not_found" ? `No user “@${h}”.` : code === "forbidden" ? "Not allowed." : "Couldn’t invite.");
+      setErr(
+        code === "not-found"
+          ? `No user “@${h}”.`
+          : code === "forbidden"
+            ? "Not allowed."
+            : code === "quota-exceeded"
+              ? "Too many pending invites."
+              : "Couldn’t invite.",
+      );
     } finally {
       setBusy(false);
+    }
+  };
+
+  const onRevokeInvite = async (inv: Invite) => {
+    setRevoking(inv.uid);
+    setErr(null);
+    try {
+      await revokeInvite(space.spaceId, inv.uid);
+      await refresh();
+    } catch {
+      setErr("Couldn’t revoke the invite.");
+    } finally {
+      setRevoking(null);
     }
   };
 
@@ -292,7 +440,7 @@ function ManageModal({ space, onClose }: { space: SpaceInfo; onClose: () => void
             {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
           <button type="button" className="sm-add" onClick={onInvite} disabled={busy}>
-            {busy ? "Adding…" : "Add"}
+            {busy ? "Inviting…" : "Invite"}
           </button>
         </div>
         {err && <div className="sm-err">{err}</div>}
@@ -324,6 +472,31 @@ function ManageModal({ space, onClose }: { space: SpaceInfo; onClose: () => void
             })
           )}
         </div>
+
+        {pending.length > 0 && (
+          <div className="sm-pending">
+            <h3 className="sm-pending-h">Pending invites</h3>
+            {pending.map((inv) => (
+              <div key={inv.uid} className="sm-member">
+                {httpsAvatar(inv.avatarUrl) ? (
+                  <img className="sm-av" src={httpsAvatar(inv.avatarUrl)} alt="" />
+                ) : (
+                  <span className="sm-av sm-av-ph" />
+                )}
+                <span className="sm-member-name">{inv.login ? `@${inv.login}` : `#${inv.uid}`}</span>
+                <span className="sm-role" data-role={inv.role}>{inv.role}</span>
+                <button
+                  type="button"
+                  className="sm-remove"
+                  disabled={revoking === inv.uid}
+                  onClick={() => onRevokeInvite(inv)}
+                >
+                  {revoking === inv.uid ? "…" : "Revoke"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
