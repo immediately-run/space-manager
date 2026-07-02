@@ -1,8 +1,10 @@
-// The space manager (UI_AS_APPS_SPEC §5.2). Lists the user's spaces (spaces:user)
-// and, for owned spaces, manages membership (spaces:admin): invite by provider
-// handle, change a member's role, remove a member. The host resolves handles and
-// enforces the owner-lockout invariant (a space always keeps an owner) — this app
-// just drives the flow and shows the result.
+// The space manager (UI_AS_APPS_SPEC §5.2). Lists the user's spaces (spaces:user),
+// surfaces the user's live Invitations inbox (Accept/Decline — FILE_SHARING §6.4/§9.8),
+// and, for owned spaces, manages sharing (spaces:admin): INVITE a user by provider
+// handle (a pull-based invitation, NOT an immediate membership write — the recipient
+// accepts), revoke a pending invite, change a member's role, remove a member. The host
+// resolves handles and enforces the owner-lockout invariant (a space always keeps an
+// owner) — this app just drives the flow and shows the result.
 import { useCallback, useEffect, useState } from "react";
 import {
   listAllSpaces,
@@ -10,7 +12,7 @@ import {
   inviteToSpace,
   listPendingInvites,
   revokeInvite,
-  listMyInvites,
+  useInvites,
   acceptInvite,
   declineInvite,
   unshareSpace,
@@ -122,41 +124,23 @@ export default function SpaceManager() {
 }
 
 // FILE_SHARING §6.4/§9.8 Invitations inbox: the invitee's pull-based accept surface.
-// A pending invite confers NO access — the user opts in here. Accepting materializes
-// membership and, in the same round-trip, the invite leaves the inbox and the space
-// joins the list (so we refresh both). All owner-written fields are escaped as text
-// (React text children) — never `dangerouslySetInnerHTML`, and an avatar only if it
-// is an `https:` URL. Live-push isn't in the SDK yet (R3-90), so v1 refreshes on
-// window focus (a documented Phase-06 follow-on adds a subscription).
+// A pending invite confers NO access — the user opts in here. The list is LIVE via
+// `useInvites()` (the host pushes the inbox on the `spaces:user` channel), so an
+// arriving/accepted/declined invite reflects within one snapshot — no reload. Accept
+// materializes membership; the accepted space then appears once we refresh the spaces
+// list (spaces aren't live-pushed to the app), while the invite leaves the inbox on
+// its own via the live channel. All owner-written fields are escaped as text (React
+// children) — never `dangerouslySetInnerHTML`, and an avatar only if it is `https:`.
 function InvitationsInbox({ onAccepted }: { onAccepted: () => void | Promise<void> }) {
-  const [invites, setInvites] = useState<Invite[]>([]);
+  const invites = useInvites();
   const [busy, setBusy] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    try {
-      setInvites(await listMyInvites());
-    } catch {
-      // No invitations surface for a signed-out / unauthorized caller — stay quiet.
-      setInvites([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    const run = async () => {
-      await refresh();
-    };
-    void run();
-    const onFocus = () => void run();
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [refresh]);
 
   const onAccept = async (inv: Invite) => {
     setBusy(inv.spaceId);
     try {
       await acceptInvite(inv.spaceId);
-      // One round-trip removes the inbox row AND adds the space to the list (§6.4).
-      await refresh();
+      // The invite leaves the inbox via the live channel; refresh the spaces list so
+      // the newly-accepted space appears in the same interaction (§6.4).
       await onAccepted();
     } catch {
       /* leave the row; the user can retry */
@@ -169,7 +153,7 @@ function InvitationsInbox({ onAccepted }: { onAccepted: () => void | Promise<voi
     setBusy(inv.spaceId);
     try {
       await declineInvite(inv.spaceId);
-      await refresh();
+      // The row leaves the inbox via the live channel.
     } catch {
       /* leave the row */
     } finally {
