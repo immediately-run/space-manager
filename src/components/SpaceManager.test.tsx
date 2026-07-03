@@ -16,7 +16,6 @@ const inviteToSpace = vi.fn<() => Promise<void>>();
 const acceptInvite = vi.fn<() => Promise<void>>();
 const declineInvite = vi.fn<() => Promise<void>>();
 const revokeInvite = vi.fn<() => Promise<void>>();
-const shareSpace = vi.fn<() => Promise<void>>();
 
 // A controllable `useInvites()` live channel: the host pushes the inbox and the hook
 // re-renders. `setInvites(list)` simulates a host push (an invite arriving/leaving).
@@ -38,7 +37,6 @@ vi.mock("@immediately-run/sdk", () => ({
   acceptInvite: (...a: unknown[]) => acceptInvite(...(a as [])),
   declineInvite: (...a: unknown[]) => declineInvite(...(a as [])),
   revokeInvite: (...a: unknown[]) => revokeInvite(...(a as [])),
-  shareSpace: (...a: unknown[]) => shareSpace(...(a as [])),
   unshareSpace: vi.fn(),
   setSpaceRole: vi.fn(),
   listGrants: vi.fn(async () => []),
@@ -62,7 +60,7 @@ const pushInvites = (list: Invite[]) =>
 beforeEach(() => {
   for (const m of [
     listAllSpaces, getSpaceMembers, listPendingInvites,
-    inviteToSpace, acceptInvite, declineInvite, revokeInvite, shareSpace,
+    inviteToSpace, acceptInvite, declineInvite, revokeInvite,
   ]) m.mockReset();
   inviteState.current = [];
   // sensible empty defaults; individual tests override.
@@ -76,7 +74,7 @@ beforeEach(() => {
 });
 
 describe("SpaceManager — invitations (R3-91)", () => {
-  it("inviting calls inviteToSpace (not shareSpace) and the offer lands under Pending, not Members", async () => {
+  it("inviting calls inviteToSpace and the offer lands under Pending, not Members", async () => {
     const user = userEvent.setup();
     listAllSpaces.mockResolvedValue([ownedSpace]);
     // First manage-open load: no members, no pending. After invite: one pending.
@@ -94,7 +92,6 @@ describe("SpaceManager — invitations (R3-91)", () => {
     await user.click(within(dialog).getByRole("button", { name: "Invite" }));
 
     await waitFor(() => expect(inviteToSpace).toHaveBeenCalledWith("s1", "bob", "writer"));
-    expect(shareSpace).not.toHaveBeenCalled();
     // The offer appears under Pending invites — and is NOT a member row.
     await within(dialog).findByText("Pending invites");
     expect(within(dialog).getByText("@bob")).toBeInTheDocument();
