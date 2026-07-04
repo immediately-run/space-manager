@@ -68,6 +68,14 @@ export default function SpaceManager() {
   // that is not the narrow panel (the full-tab binding, a fork, or `null` for plain
   // `vite dev`) gets the roomier full-screen layout.
   const region = useRegion();
+  // PRINCIPALS §9 B3 / R3-96: the narrow `panel.spaces` rail is browse/open/mount-only
+  // and holds `spaces:user` but NOT `spaces:admin` (see site-main `registry/defaults.ts`).
+  // So the admin surfaces below — the per-space "Manage" modal (invite/role/remove) and
+  // the grant AuditView, all `spaces:admin`-gated host-side — are rendered ONLY on the
+  // non-panel surface (`page.spaces` full tab). In the rail they'd only fire `forbidden`,
+  // and the exit criterion is "the rail exposes no admin verb." Browse (list spaces,
+  // `spaces:user`) and the invitee-side Invitations inbox (accept/decline own invites,
+  // also `spaces:user`) stay in both surfaces.
   const fullTab = region !== "panel.spaces";
 
   const loadSpaces = useCallback(async () => {
@@ -108,7 +116,7 @@ export default function SpaceManager() {
                 <span className="sm-name">{s.name ?? "Untitled space"}</span>
                 <span className="sm-role" data-role={s.role}>{s.role}</span>
               </div>
-              {s.role === "owner" && (
+              {fullTab && s.role === "owner" && (
                 <button type="button" className="sm-manage" onClick={() => setSelected(s)}>
                   Manage
                 </button>
@@ -117,8 +125,8 @@ export default function SpaceManager() {
           ))}
         </ul>
       )}
-      {selected && <ManageModal space={selected} onClose={() => setSelected(null)} />}
-      <AuditView />
+      {fullTab && selected && <ManageModal space={selected} onClose={() => setSelected(null)} />}
+      {fullTab && <AuditView />}
     </div>
   );
 }
