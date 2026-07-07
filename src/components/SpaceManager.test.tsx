@@ -21,6 +21,11 @@ const revokeInvite = vi.fn<() => Promise<void>>();
 // re-renders. `setInvites(list)` simulates a host push (an invite arriving/leaving).
 const inviteState = vi.hoisted(() => ({ current: [] as unknown[], listeners: new Set<() => void>() }));
 
+// A controllable `useRegion()`: admin verbs only render on the non-panel (full-tab)
+// surface (R3-96 / PRINCIPALS §9 B3). Default to `page.spaces` so the admin-flow tests
+// below exercise the Manage modal; the R3-96 test overrides it to `panel.spaces`.
+const regionState = vi.hoisted(() => ({ current: "page.spaces" as string }));
+
 vi.mock("@immediately-run/sdk", () => ({
   listAllSpaces: () => listAllSpaces(),
   getSpaceMembers: () => getSpaceMembers(),
@@ -43,7 +48,7 @@ vi.mock("@immediately-run/sdk", () => ({
   revokeGrant: vi.fn(),
   createSpace: vi.fn(),
   useAuth: () => ({ status: "signed-in" }),
-  useRegion: () => "panel.spaces",
+  useRegion: () => regionState.current,
 }));
 
 import SpaceManager from "./SpaceManager";
@@ -63,6 +68,7 @@ beforeEach(() => {
     inviteToSpace, acceptInvite, declineInvite, revokeInvite,
   ]) m.mockReset();
   inviteState.current = [];
+  regionState.current = "page.spaces"; // full-tab by default; the R3-96 test sets panel.spaces
   // sensible empty defaults; individual tests override.
   listAllSpaces.mockResolvedValue([]);
   getSpaceMembers.mockResolvedValue([]);
@@ -155,6 +161,28 @@ describe("SpaceManager — invitations (R3-91)", () => {
     await user.click(within(dialog).getByRole("button", { name: "Revoke" }));
     await waitFor(() => expect(revokeInvite).toHaveBeenCalledWith("s1", "uid-of-bob"));
     await waitFor(() => expect(within(dialog).queryByText("Pending invites")).not.toBeInTheDocument());
+  });
+
+  it("the narrow panel.spaces rail exposes NO admin verb, but still browses + shows invitations (R3-96 / §9 B3)", async () => {
+    regionState.current = "panel.spaces";
+    listAllSpaces.mockResolvedValue([ownedSpace]);
+
+    render(<SpaceManager />);
+    // Browse still works — the owned space is listed (spaces:user).
+    expect(await screen.findByText("My space")).toBeInTheDocument();
+    // ...but the admin affordance is absent on the rail (no spaces:admin here).
+    expect(screen.queryByText("Manage")).not.toBeInTheDocument();
+    // The invitee-side inbox (spaces:user) is retained — a pushed invite renders.
+    await pushInvites([{ spaceId: "s9", uid: "u-me", role: "reader", owner: "u-owner", invitedBy: "u-owner", name: "Shared docs" } as Invite]);
+    expect(await screen.findByText("Invitations")).toBeInTheDocument();
+  });
+
+  it("the full-tab surface DOES expose Manage for an owned space (page.spaces)", async () => {
+    regionState.current = "page.spaces";
+    listAllSpaces.mockResolvedValue([ownedSpace]);
+
+    render(<SpaceManager />);
+    expect(await screen.findByText("Manage")).toBeInTheDocument();
   });
 
   it("an invite whose name/invitedBy contains markup renders as inert text (escaped)", async () => {
