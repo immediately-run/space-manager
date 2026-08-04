@@ -10,5 +10,12 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
+    // R3-256: process real CSS imports instead of stubbing them to empty. jsdom
+    // does not lay out, but it DOES cascade a stylesheet into `getComputedStyle`,
+    // so this lets a test assert the shipped stylesheet's effect on the shipped
+    // markup — the only way to pin a CSS-only regression in this harness. With the
+    // default (`css: false`) every CSS import is an empty string and such a test
+    // passes vacuously against any stylesheet at all.
+    css: true,
   },
 });

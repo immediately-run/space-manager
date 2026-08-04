@@ -59,15 +59,35 @@ button:disabled { opacity: .5; cursor: default; }
 .sm-x { position: absolute; top: 10px; right: 12px; background: none; border: none; color: var(--sm-muted, #9aa0a6); font-size: 20px; cursor: pointer; }
 .sm-modal-title { margin: 0 0 14px; font-size: 15px; }
 
-.sm-invite { display: flex; gap: 8px; }
+/* R3-256 (R3-05 drill finding F4) — the invite row must never push a control
+   outside the dialog. The modal is `width: min(420px, 92vw)`, so on a phone the
+   content box is ~260-300px while the row's three controls need ~320-390px at
+   their intrinsic sizes. Two changes make the overflow impossible:
+
+     - `flex-wrap: wrap` — with nowhere to shrink to, the row now BREAKS instead
+       of pushing the role select and the Invite button past the modal edge (the
+       reported symptom: "Add is clipped/invisible; only reachable by Tab");
+     - `min-width: 0` on the growing input — a flex item defaults to
+       `min-width: auto`, i.e. its CONTENT-based minimum, so `flex: 1` alone could
+       not shrink it below the intrinsic width of a text input (~20 characters).
+       That default is the actual bug. The same idiom is already applied to
+       `.sm-row-main`, `.sm-member-name` and `.sm-audit-space`; this row was missed.
+
+   The small `12ch` basis lets the input give way first and wrap onto its own line
+   before either fixed-size control is squeezed. */
+.sm-invite { display: flex; flex-wrap: wrap; gap: 8px; }
 .sm-input {
-  flex: 1; background: var(--sm-input-bg, #111317); color: inherit;
+  flex: 1 1 12ch; min-width: 0;
+  background: var(--sm-input-bg, #111317); color: inherit;
   border: 1px solid var(--sm-border, #2c2f34); border-radius: 6px; padding: 7px 9px; font: inherit;
 }
 .sm-select {
   background: var(--sm-input-bg, #111317); color: inherit;
   border: 1px solid var(--sm-border, #2c2f34); border-radius: 6px; padding: 6px; font: inherit;
 }
+/* Scoped to this row so the shared button/select styling is untouched elsewhere:
+   the two fixed-size controls hold their size and the input absorbs the change. */
+.sm-invite .sm-select, .sm-invite .sm-add { flex: 0 0 auto; }
 .sm-err { color: #ffb4b4; font-size: 12px; margin-top: 8px; }
 
 .sm-members { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
