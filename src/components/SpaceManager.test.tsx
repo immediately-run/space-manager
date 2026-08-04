@@ -7,6 +7,10 @@ import { render, screen, waitFor, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { Invite, Member, SpaceInfo } from "@immediately-run/sdk";
+// The REAL shipped stylesheet, as text, so the R3-256 layout test asserts against
+// what ships rather than a copy of the rules. `vitest.config.ts` sets `css: true`;
+// without it this import is an empty string and that test passes vacuously.
+import spaceManagerCss from "./SpaceManager.css?raw";
 
 // --- controllable SDK doubles ------------------------------------------------
 const listAllSpaces = vi.fn<() => Promise<SpaceInfo[]>>();
@@ -183,6 +187,53 @@ describe("SpaceManager — invitations (R3-91)", () => {
 
     render(<SpaceManager />);
     expect(await screen.findByText("Manage")).toBeInTheDocument();
+  });
+
+  it("the invite row cannot push a control outside the dialog (R3-256 / drill F4)", async () => {
+    // The reported failure: on a narrow dialog the role select spilled outside and
+    // the submit button was "clipped/invisible; only reachable by Tab". jsdom does
+    // not lay out, so this cannot be asserted in pixels — but it DOES cascade a
+    // stylesheet into getComputedStyle, so the two properties that make the
+    // overflow impossible are asserted on the REAL rendered controls with the REAL
+    // shipped stylesheet, not by grepping the CSS file:
+    //
+    //   · the row wraps  ⇒ a control that will not fit moves to the next line
+    //                      instead of being pushed past the modal edge;
+    //   · the growing input can shrink below its content width ⇒ it gives way
+    //                      first, so the row only wraps when it genuinely must.
+    //
+    // A flex item defaults to `min-width: auto` (its CONTENT minimum), which is
+    // precisely why `flex: 1` alone was not enough and the row overflowed.
+    // RESIDUAL: the true geometric check ("nothing is clipped at 320px") needs a
+    // browser; this repo has no layout-capable harness.
+    const user = userEvent.setup();
+    listAllSpaces.mockResolvedValue([ownedSpace]);
+
+    // Guard against the vacuous pass: if CSS processing is ever disabled again,
+    // the sheet is empty, every computed value falls back to its initial value,
+    // and the assertions below would "pass" while testing nothing.
+    expect(spaceManagerCss.length).toBeGreaterThan(0);
+    const style = document.createElement("style");
+    style.textContent = spaceManagerCss;
+    document.head.appendChild(style);
+
+    render(<SpaceManager />);
+    await user.click(await screen.findByText("Manage"));
+    const dialog = await screen.findByRole("dialog");
+
+    const input = within(dialog).getByPlaceholderText("handle");
+    const row = input.parentElement as HTMLElement;
+    const select = within(dialog).getAllByRole("combobox")[0];
+    const submit = within(dialog).getByRole("button", { name: "Invite" });
+
+    // All three controls really are in one row — the premise of the failure.
+    expect(row).toContainElement(select);
+    expect(row).toContainElement(submit);
+
+    expect(getComputedStyle(row).flexWrap).toBe("wrap");
+    expect(getComputedStyle(input).minWidth).toBe("0px");
+
+    style.remove();
   });
 
   it("an invite whose name/invitedBy contains markup renders as inert text (escaped)", async () => {
