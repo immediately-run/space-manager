@@ -30,6 +30,12 @@ const inviteState = vi.hoisted(() => ({ current: [] as unknown[], listeners: new
 // below exercise the Manage modal; the R3-96 test overrides it to `panel.spaces`.
 const regionState = vi.hoisted(() => ({ current: "page.spaces" as string }));
 
+// A controllable `useTaskInput()`: the R3-269 `open-space` boot hint
+// (/spaces?space=<id> → auto-open the Manage modal at that space). Default null.
+const taskInputState = vi.hoisted(() => ({
+  current: null as { task: string; params: Record<string, unknown> } | null,
+}));
+
 vi.mock("@immediately-run/sdk", () => ({
   listAllSpaces: () => listAllSpaces(),
   getSpaceMembers: () => getSpaceMembers(),
@@ -53,6 +59,7 @@ vi.mock("@immediately-run/sdk", () => ({
   createSpace: vi.fn(),
   useAuth: () => ({ status: "signed-in" }),
   useRegion: () => regionState.current,
+  useTaskInput: () => taskInputState.current,
 }));
 
 import SpaceManager from "./SpaceManager";
@@ -73,6 +80,7 @@ beforeEach(() => {
   ]) m.mockReset();
   inviteState.current = [];
   regionState.current = "page.spaces"; // full-tab by default; the R3-96 test sets panel.spaces
+  taskInputState.current = null;
   // sensible empty defaults; individual tests override.
   listAllSpaces.mockResolvedValue([]);
   getSpaceMembers.mockResolvedValue([]);
@@ -187,6 +195,26 @@ describe("SpaceManager — invitations (R3-91)", () => {
 
     render(<SpaceManager />);
     expect(await screen.findByText("Manage")).toBeInTheDocument();
+  });
+
+  it("R3-269: an `open-space` boot hint auto-opens Manage at that owned space", async () => {
+    regionState.current = "page.spaces";
+    taskInputState.current = { task: "open-space", params: { spaceId: "s1" } };
+    listAllSpaces.mockResolvedValue([ownedSpace]);
+
+    render(<SpaceManager />);
+    const dialog = await screen.findByRole("dialog", { name: "Manage space" });
+    expect(dialog).toHaveTextContent("My space");
+  });
+
+  it("R3-269: an `open-space` hint for a non-owned / unknown space opens nothing", async () => {
+    regionState.current = "page.spaces";
+    taskInputState.current = { task: "open-space", params: { spaceId: "not-mine" } };
+    listAllSpaces.mockResolvedValue([ownedSpace]);
+
+    render(<SpaceManager />);
+    await screen.findByText("Manage"); // list rendered
+    expect(screen.queryByRole("dialog", { name: "Manage space" })).not.toBeInTheDocument();
   });
 
   it("the invite row cannot push a control outside the dialog (R3-256 / drill F4)", async () => {
