@@ -5,7 +5,7 @@
 // accepts), revoke a pending invite, change a member's role, remove a member. The host
 // resolves handles and enforces the owner-lockout invariant (a space always keeps an
 // owner) — this app just drives the flow and shows the result.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   listAllSpaces,
   getSpaceMembers,
@@ -22,6 +22,7 @@ import {
   createSpace,
   useAuth,
   useRegion,
+  useTaskInput,
   type SpaceInfo,
   type Member,
   type Invite,
@@ -95,6 +96,25 @@ export default function SpaceManager() {
     };
     void run();
   }, [loadSpaces]);
+
+  // R3-269 D4: the host's `open-space` boot hint — `/spaces?space=<id>` (the file
+  // explorer's "Manage sharing →" deep link) auto-opens the Manage modal AT that
+  // space. Untrusted display/navigation data: it is only ever MATCHED against the
+  // spaces this user actually has (and only where the admin surface renders — the
+  // full tab, on an owned space). Consumed once, so closing the modal stays closed.
+  const taskInput = useTaskInput();
+  const hintConsumed = useRef(false);
+  useEffect(() => {
+    if (hintConsumed.current || !fullTab || !spaces) return;
+    if (taskInput?.task !== "open-space") return;
+    const spaceId = taskInput.params?.spaceId;
+    if (typeof spaceId !== "string") return;
+    hintConsumed.current = true;
+    const target = spaces.find((s) => s.spaceId === spaceId);
+    // Deferred so the selection isn't a synchronous set-state inside the effect
+    // (react-hooks/set-state-in-effect); the ref above makes it one-shot.
+    if (target && target.role === "owner") queueMicrotask(() => setSelected(target));
+  }, [fullTab, spaces, taskInput]);
 
   return (
     <div className={fullTab ? "sm sm-full" : "sm"}>
