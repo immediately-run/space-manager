@@ -36,6 +36,12 @@ const taskInputState = vi.hoisted(() => ({
   current: null as { task: string; params: Record<string, unknown> } | null,
 }));
 
+// R3-206 — the wire call behind "Connect Google Drive". Mocked at the SUBPATH the
+// component imports from: the real `sandboxUtils.js` reaches a host runtime that does
+// not exist under vitest (and ships extensionless specifiers vitest cannot resolve).
+const protocolRequest = vi.fn<(p: string, m: string, args: unknown[]) => Promise<unknown>>();
+vi.mock("@immediately-run/sdk/sandboxUtils", () => ({ protocolRequest: (...a: unknown[]) => protocolRequest(...(a as [string, string, unknown[]])) }));
+
 vi.mock("@immediately-run/sdk", () => ({
   listAllSpaces: () => listAllSpaces(),
   getSpaceMembers: () => getSpaceMembers(),
@@ -276,5 +282,92 @@ describe("SpaceManager — invitations (R3-91)", () => {
     // The markup is present as TEXT, and produced no injected <img> element.
     expect(screen.getByText(/invited you to/i).textContent).toContain(markup);
     expect(container.querySelector('img[src="x"]')).toBeNull();
+  });
+});
+
+// R3-206 (GOOGLE_IDENTITY_AND_DRIVE_SPEC §8.2; SPACES_UI_SPEC §4/§5 R-SPACES-6) —
+// "Connect a new source → Google Drive".
+//
+// What this app is responsible for is small and the tests say so: it names the
+// SCHEME, and it reflects the result. Every authority step — the incremental Google
+// consent, the folder browser, the ro|rw choice, the single-writer disclosure — is
+// drawn by the HOST, and its tests live there (`ConnectSourceDialog.test.tsx`). The
+// thing worth pinning HERE is that this app paints none of it: a forked space-manager
+// that tried to would be drawing its own consent, which §8.3 forbids.
+describe("connecting a new source (R3-206)", () => {
+  beforeEach(() => {
+    listAllSpaces.mockResolvedValue([]);
+    protocolRequest.mockReset();
+    protocolRequest.mockResolvedValue({ id: "drive:folder-1" });
+    regionState.current = "page.spaces";
+  });
+
+  it("CONNECT is a distinct action from CREATE — both are offered, and they are not the same button", async () => {
+    // `requestMount()` selects from what the user already has; connect SETS ONE UP.
+    // Collapsing them is the shape §8.2 rules out, because a picker that sometimes
+    // navigates the page to Google is not a picker.
+    render(<SpaceManager />);
+    expect(await screen.findByRole("button", { name: "Connect Google Drive" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create a space" })).toBeInTheDocument();
+  });
+
+  it("names only the SCHEME — no scope, no folder, no wording", async () => {
+    render(<SpaceManager />);
+    await userEvent.click(await screen.findByRole("button", { name: "Connect Google Drive" }));
+
+    await waitFor(() => expect(protocolRequest).toHaveBeenCalledTimes(1));
+    expect(protocolRequest).toHaveBeenCalledWith("protocol-spaces", "connectSource", [{ scheme: "drive" }]);
+  });
+
+  it("paints NO authorization chrome of its own", async () => {
+    // The whole §8.3 rule in one assertion: after the click, this app shows a busy
+    // label and nothing else. No scope text, no folder list, no ro/rw choice — those
+    // exist only in host chrome, which a fork cannot replace.
+    let resolve: (v: unknown) => void = () => {};
+    protocolRequest.mockReturnValue(new Promise((r) => { resolve = r; }));
+    render(<SpaceManager />);
+    await userEvent.click(await screen.findByRole("button", { name: "Connect Google Drive" }));
+
+    expect(await screen.findByRole("button", { name: "Connecting…" })).toBeInTheDocument();
+    expect(screen.queryByText(/drive\.file/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/single-writer/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Read and write/ })).not.toBeInTheDocument();
+    await act(async () => { resolve({}); });
+  });
+
+  it("treats `cancelled` as calm — the user backed out, nothing failed", async () => {
+    protocolRequest.mockRejectedValue(Object.assign(new Error("cancelled"), { code: "cancelled" }));
+    render(<SpaceManager />);
+    await userEvent.click(await screen.findByRole("button", { name: "Connect Google Drive" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Connect Google Drive" })).toBeEnabled());
+    expect(document.querySelector(".sm-err")).toBeNull();
+  });
+
+  it("says what to DO when the Google connection needs re-authorizing", async () => {
+    // `google_reauth_required` is not "something went wrong": the remedy is a
+    // specific page, and a generic message would leave the user with no next step.
+    protocolRequest.mockRejectedValue(Object.assign(new Error("x"), { code: "google_reauth_required" }));
+    render(<SpaceManager />);
+    await userEvent.click(await screen.findByRole("button", { name: "Connect Google Drive" }));
+
+    expect(await screen.findByText(/Reconnect Google in Settings/)).toBeInTheDocument();
+  });
+
+  it("says so plainly when the deployment has no Drive connector", async () => {
+    protocolRequest.mockRejectedValue(Object.assign(new Error("x"), { code: "unsupported-scheme" }));
+    render(<SpaceManager />);
+    await userEvent.click(await screen.findByRole("button", { name: "Connect Google Drive" }));
+
+    expect(await screen.findByText(/isn’t available on this deployment/)).toBeInTheDocument();
+  });
+
+  it("is absent from the narrow panel — the rail exposes no setup verb", async () => {
+    // Same rule as the admin surfaces (R3-96 / PRINCIPALS §9 B3): the rail is
+    // browse/open/mount-only.
+    regionState.current = "panel.spaces";
+    render(<SpaceManager />);
+    await screen.findByText("Spaces");
+    expect(screen.queryByRole("button", { name: "Connect Google Drive" })).not.toBeInTheDocument();
   });
 });

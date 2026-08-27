@@ -29,6 +29,11 @@ import {
   type Role,
   type GrantRecord,
 } from "@immediately-run/sdk";
+// The wire-level escape hatch, from the SDK's own subpath. `connectSource` is not on
+// the pinned typed surface yet (R3-206 adds the host verb; the SDK export follows on
+// its next release), and `protocolRequest` is exactly the seam for that gap — the
+// method name is the contract either way.
+import { protocolRequest } from "@immediately-run/sdk/sandboxUtils";
 import "./SpaceManager.css";
 
 const ROLES: Role[] = ["owner", "writer", "reader"];
@@ -120,7 +125,12 @@ export default function SpaceManager() {
     <div className={fullTab ? "sm sm-full" : "sm"}>
       <header className="sm-hd">
         <span className="sm-title">Spaces</span>
-        {fullTab && <CreateSpaceEntry onCreated={loadSpaces} />}
+        {fullTab && (
+          <span className="sm-create">
+            <ConnectSourceEntry onConnected={loadSpaces} />
+            <CreateSpaceEntry onCreated={loadSpaces} />
+          </span>
+        )}
       </header>
       {error && <div className="sm-msg">{error}</div>}
       <InvitationsInbox onAccepted={loadSpaces} />
@@ -259,12 +269,71 @@ function CreateSpaceEntry({ onCreated }: { onCreated: () => void | Promise<void>
   };
 
   return (
-    <span className="sm-create">
+    <>
       <button type="button" className="sm-add" onClick={onCreate} disabled={busy}>
         {busy ? "Creating…" : "Create a space"}
       </button>
       {err && <span className="sm-err">{err}</span>}
-    </span>
+    </>
+  );
+}
+
+// R3-206 / SPACES_UI_SPEC §4–§5 (R-SPACES-6) — "Connect a new source → Google Drive".
+//
+// CONNECT IS NOT SELECT, and that is why this is a second entry point rather than a
+// row in the powerbox. `requestMount()` picks from sources the user ALREADY has;
+// this SETS ONE UP — an incremental Google consent, a folder pick, an access choice.
+// Putting a provider OAuth flow inside the powerbox would mean the picker sometimes
+// navigates the whole page to Google, which is exactly what §8.2 rules out.
+//
+// Every step is drawn by the HOST: the scope request, the folder browser, the ro|rw
+// choice and the single-writer disclosure. This app supplies the SCHEME and nothing
+// else — it never sees the user's Drive, the granted scope, or any of the wording.
+// That is the same discipline as `createSpace()` above: drive the flow, reflect the
+// result, paint no authorization chrome.
+//
+// Called through `protocolRequest` rather than a typed SDK verb because the SDK's
+// pinned surface has no `connectSource` yet; the wire method is the contract either
+// way, and swapping to the typed export when it ships is a one-line change.
+function ConnectSourceEntry({ onConnected }: { onConnected: () => void | Promise<void> }) {
+  const { status } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Connecting a source in the user's account needs an account.
+  if (status !== "signed-in") return null;
+
+  const onConnect = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await protocolRequest("protocol-spaces", "connectSource", [{ scheme: "drive" }]);
+      await onConnected();
+    } catch (e) {
+      const code = (e as { code?: string })?.code;
+      // `cancelled` is the user backing out of the host flow — calm, not an error.
+      if (code === "cancelled") return;
+      setErr(
+        code === "auth-required"
+          ? "Sign in to connect a source."
+          : code === "unsupported-scheme"
+            ? "Google Drive isn’t available on this deployment."
+            : code === "google_reauth_required"
+              ? "Reconnect Google in Settings → Connections, then try again."
+              : "Couldn’t connect that source.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button type="button" className="sm-manage" onClick={onConnect} disabled={busy}>
+        {busy ? "Connecting…" : "Connect Google Drive"}
+      </button>
+      {err && <span className="sm-err">{err}</span>}
+    </>
   );
 }
 
