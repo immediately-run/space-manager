@@ -20,6 +20,8 @@ const inviteToSpace = vi.fn<() => Promise<void>>();
 const acceptInvite = vi.fn<() => Promise<void>>();
 const declineInvite = vi.fn<() => Promise<void>>();
 const revokeInvite = vi.fn<() => Promise<void>>();
+// R3-259 — the create verb's params are under test (the create-time kind).
+const createSpaceMock = vi.fn<(opts?: unknown) => Promise<void>>();
 
 // A controllable `useInvites()` live channel: the host pushes the inbox and the hook
 // re-renders. `setInvites(list)` simulates a host push (an invite arriving/leaving).
@@ -62,7 +64,7 @@ vi.mock("@immediately-run/sdk", () => ({
   setSpaceRole: vi.fn(),
   listGrants: vi.fn(async () => []),
   revokeGrant: vi.fn(),
-  createSpace: vi.fn(),
+  createSpace: (...a: unknown[]) => createSpaceMock(...(a as [opts?: unknown])),
   useAuth: () => ({ status: "signed-in" }),
   useRegion: () => regionState.current,
   useTaskInput: () => taskInputState.current,
@@ -369,5 +371,101 @@ describe("connecting a new source (R3-206)", () => {
     render(<SpaceManager />);
     await screen.findByText("Spaces");
     expect(screen.queryByRole("button", { name: "Connect Google Drive" })).not.toBeInTheDocument();
+  });
+});
+
+// R3-259 — the space's KIND: chosen at create, visible in the list, converted
+// once via a named arm-then-confirm act. `kind` rides the wire additively (the
+// host derives/validates it); these tests pin what the app sends and shows.
+describe("R3-259 — a space's kind", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    regionState.current = "page.spaces";
+    taskInputState.current = null;
+    inviteState.current = [];
+    listAllSpaces.mockResolvedValue([]);
+    getSpaceMembers.mockResolvedValue([]);
+    listPendingInvites.mockResolvedValue([]);
+    createSpaceMock.mockResolvedValue(undefined);
+    protocolRequest.mockResolvedValue({ ok: true });
+  });
+
+  it("create defaults to personal and sends the kind", async () => {
+    render(<SpaceManager />);
+    await userEvent.click(await screen.findByRole("button", { name: "Create a space" }));
+    expect(createSpaceMock).toHaveBeenCalledWith({ kind: "personal" });
+  });
+
+  it("choosing Shared sends shared", async () => {
+    render(<SpaceManager />);
+    await userEvent.click(await screen.findByRole("radio", { name: "Shared" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create a space" }));
+    expect(createSpaceMock).toHaveBeenCalledWith({ kind: "shared" });
+  });
+
+  it("badges only SHARED spaces — personal is the unmarked default", async () => {
+    listAllSpaces.mockResolvedValue([
+      { spaceId: "s1", name: "Mine", role: "owner", kind: "personal" } as SpaceInfo,
+      { spaceId: "s2", name: "Ours", role: "owner", kind: "shared" } as SpaceInfo,
+      { spaceId: "s3", name: "Legacy", role: "owner" } as SpaceInfo, // pre-R3-259 row: unbadged
+    ]);
+    render(<SpaceManager />);
+    const ours = (await screen.findByText("Ours")).closest("li")!;
+    expect(within(ours as HTMLElement).getByText("shared")).toBeInTheDocument();
+    const mine = screen.getByText("Mine").closest("li")!;
+    expect(within(mine as HTMLElement).queryByText("shared")).not.toBeInTheDocument();
+    const legacy = screen.getByText("Legacy").closest("li")!;
+    expect(within(legacy as HTMLElement).queryByText("shared")).not.toBeInTheDocument();
+  });
+
+  it("the owner's personal space offers Convert; arming shows the irreversibility; confirming hits the verb once", async () => {
+    listAllSpaces.mockResolvedValue([{ spaceId: "s1", name: "Mine", role: "owner", kind: "personal" } as SpaceInfo]);
+    render(<SpaceManager />);
+    await userEvent.click(await screen.findByRole("button", { name: "Manage" }));
+
+    const arm = await screen.findByRole("button", { name: /Convert to shared…/ });
+    await userEvent.click(arm); // first click ARMS
+    expect(protocolRequest).not.toHaveBeenCalled();
+    // The armed state is the button that now SAYS what it does.
+    expect(screen.getByRole("button", { name: /Convert to shared — cannot be undone/ })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Convert to shared — cannot be undone/ }));
+    expect(protocolRequest).toHaveBeenCalledWith("protocol-spaces", "convertToShared", [{ spaceId: "s1", confirm: true }]);
+    expect(protocolRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("after converting, the refreshed list shows the shared badge", async () => {
+    let kind: string | undefined = "personal";
+    listAllSpaces.mockImplementation(async () => [{ spaceId: "s1", name: "Mine", role: "owner", kind } as SpaceInfo]);
+    render(<SpaceManager />);
+    await userEvent.click(await screen.findByRole("button", { name: "Manage" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Convert to shared…/ }));
+    // The verb resolving flips what the (mock) host lists next.
+    protocolRequest.mockImplementation(async () => {
+      kind = "shared";
+      return { ok: true };
+    });
+    await userEvent.click(screen.getByRole("button", { name: /Convert to shared — cannot be undone/ }));
+    await waitFor(() =>
+      expect(within(screen.getByText("Mine").closest("li") as HTMLElement).getByText("shared")).toBeInTheDocument(),
+    );
+  });
+
+  it("a SHARED space's Manage modal offers no conversion — there is no way back", async () => {
+    listAllSpaces.mockResolvedValue([{ spaceId: "s2", name: "Ours", role: "owner", kind: "shared" } as SpaceInfo]);
+    render(<SpaceManager />);
+    await userEvent.click(await screen.findByRole("button", { name: "Manage" }));
+    await screen.findByText(/Share “Ours”/);
+    expect(screen.queryByRole("button", { name: /Convert to shared/ })).not.toBeInTheDocument();
+  });
+
+  it("a forbidden conversion surfaces the owner-only message", async () => {
+    listAllSpaces.mockResolvedValue([{ spaceId: "s1", name: "Mine", role: "owner", kind: "personal" } as SpaceInfo]);
+    protocolRequest.mockRejectedValue(Object.assign(new Error("x"), { code: "forbidden" }));
+    render(<SpaceManager />);
+    await userEvent.click(await screen.findByRole("button", { name: "Manage" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Convert to shared…/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Convert to shared — cannot be undone/ }));
+    expect(await screen.findByText(/Only the owner can convert this space/)).toBeInTheDocument();
   });
 });

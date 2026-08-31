@@ -144,6 +144,14 @@ export default function SpaceManager() {
             <li key={s.spaceId} className="sm-row">
               <div className="sm-row-main">
                 <span className="sm-name">{s.name ?? "Untitled space"}</span>
+                {/* R3-259 — only SHARED is badged: personal is the unmarked default
+                    (the same "absence is the quiet case" rule the publisher badge
+                    uses), and the kind shown is the host's DERIVED one. */}
+                {kindOf(s) === "shared" && (
+                  <span className="sm-kind" data-kind="shared">
+                    shared
+                  </span>
+                )}
                 <span className="sm-role" data-role={s.role}>{s.role}</span>
               </div>
               {fullTab && s.role === "owner" && (
@@ -155,7 +163,9 @@ export default function SpaceManager() {
           ))}
         </ul>
       )}
-      {fullTab && selected && <ManageModal space={selected} onClose={() => setSelected(null)} />}
+      {fullTab && selected && (
+        <ManageModal space={selected} onClose={() => setSelected(null)} onSpacesChanged={loadSpaces} />
+      )}
       {fullTab && <AuditView />}
     </div>
   );
@@ -244,10 +254,19 @@ function InvitationsInbox({ onAccepted }: { onAccepted: () => void | Promise<voi
 // the first-create-per-app consent, and the write ordering. This app does NOT paint
 // any authorization chrome — it just calls `createSpace()` and reflects the result.
 // Gated on signed-in: creating storage in the user's account needs an account.
+//
+// R3-259 — the create-time KIND. Personal (default) is the safe,
+// reversible-until-converted state; Shared is shared from the first byte (the host
+// latches it at birth). The wire param is additive (the pinned typed wrapper passes
+// opts straight through — the cast is the local widening until the SDK export
+// catches up; the HOST validates the literal either way).
+type CreateKind = "personal" | "shared";
+
 function CreateSpaceEntry({ onCreated }: { onCreated: () => void | Promise<void> }) {
   const { status } = useAuth();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [kind, setKind] = useState<CreateKind>("personal");
 
   // Until the host reports auth, render nothing rather than a button that can't work.
   if (status !== "signed-in") return null;
@@ -256,7 +275,10 @@ function CreateSpaceEntry({ onCreated }: { onCreated: () => void | Promise<void>
     setBusy(true);
     setErr(null);
     try {
-      await createSpace();
+      // The wire param is additive (the pinned typed wrapper passes opts straight
+      // through — the double cast is the local widening until the SDK export
+      // catches up; the HOST validates the literal either way).
+      await createSpace({ kind } as unknown as Parameters<typeof createSpace>[0]);
       await onCreated();
     } catch (e) {
       const code = (e as { code?: string })?.code;
@@ -270,6 +292,29 @@ function CreateSpaceEntry({ onCreated }: { onCreated: () => void | Promise<void>
 
   return (
     <>
+      <div className="sm-create-kind" role="radiogroup" aria-label="Space kind">
+        <label>
+          <input
+            type="radio"
+            name="sm-create-kind"
+            checked={kind === "personal"}
+            onChange={() => setKind("personal")}
+          />
+          Personal
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="sm-create-kind"
+            checked={kind === "shared"}
+            onChange={() => setKind("shared")}
+          />
+          Shared
+        </label>
+        {kind === "shared" && (
+          <span className="sm-create-note">More than one person will be able to change it.</span>
+        )}
+      </div>
       <button type="button" className="sm-add" onClick={onCreate} disabled={busy}>
         {busy ? "Creating…" : "Create a space"}
       </button>
@@ -277,6 +322,10 @@ function CreateSpaceEntry({ onCreated }: { onCreated: () => void | Promise<void>
     </>
   );
 }
+
+// R3-259 — the DERIVED kind the host lists (`SpaceInfo` gains `kind` on the wire;
+// read defensively so the pinned SDK type doesn't gate the badge).
+const kindOf = (s: SpaceInfo): CreateKind | undefined => (s as { kind?: CreateKind }).kind;
 
 // R3-206 / SPACES_UI_SPEC §4–§5 (R-SPACES-6) — "Connect a new source → Google Drive".
 //
@@ -408,7 +457,16 @@ function AuditView() {
   );
 }
 
-function ManageModal({ space, onClose }: { space: SpaceInfo; onClose: () => void }) {
+function ManageModal({
+  space,
+  onClose,
+  onSpacesChanged,
+}: {
+  space: SpaceInfo;
+  onClose: () => void;
+  /** R3-259 — the conversion changes the LIST badge, not just members. */
+  onSpacesChanged?: () => void | Promise<void>;
+}) {
   const [members, setMembers] = useState<Member[] | null>(null);
   const [pending, setPending] = useState<Invite[]>([]);
   const [handle, setHandle] = useState("");
@@ -416,6 +474,12 @@ function ManageModal({ space, onClose }: { space: SpaceInfo; onClose: () => void
   const [busy, setBusy] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // R3-259 — the Convert arm-then-confirm state (the same two-click shape the
+  // contribute panel's reset uses). The IRREVERSIBILITY copy lives HERE, in the
+  // manager, per the item; the wire additionally carries `confirm: true` as
+  // belt-and-braces and the host owner-checks the verb.
+  const [convertArmed, setConvertArmed] = useState(false);
+  const [converting, setConverting] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -502,11 +566,61 @@ function ManageModal({ space, onClose }: { space: SpaceInfo; onClose: () => void
     }
   };
 
+  // R3-259 — the deliberate one-way conversion. First click arms; the second (the
+  // button that now says what it does) performs it. The verb rides the
+  // `protocolRequest` seam like `connectSource` above: the host gate holds
+  // `spaces:admin` + the confirm literal, and the host checks ownership.
+  const onConvert = async () => {
+    if (!convertArmed) {
+      setConvertArmed(true);
+      return;
+    }
+    setConverting(true);
+    setErr(null);
+    try {
+      await protocolRequest("protocol-spaces", "convertToShared", [{ spaceId: space.spaceId, confirm: true }]);
+      setConvertArmed(false);
+      await Promise.all([refresh(), onSpacesChanged?.()]);
+    } catch (e) {
+      const code = (e as { code?: string })?.code;
+      setErr(code === "forbidden" ? "Only the owner can convert this space." : "Couldn’t convert the space.");
+    } finally {
+      setConverting(false);
+    }
+  };
+
   return (
     <div className="sm-overlay" onClick={onClose}>
       <div className="sm-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Manage space">
         <button type="button" className="sm-x" onClick={onClose} aria-label="Close">×</button>
         <h2 className="sm-modal-title">Share “{space.name ?? "Untitled space"}”</h2>
+
+        {/* R3-259 — the named, one-way conversion. Offered only where it is real:
+            the owner's view of a space whose derived kind is still personal (the
+            host's derivation — a latched space never shows it). */}
+        {space.role === "owner" && kindOf(space) === "personal" && (
+          <div className="sm-convert">
+            {convertArmed ? (
+              <p className="sm-convert-note">
+                Converting <strong>{space.name ?? "this space"}</strong> to shared cannot be undone. Apps and agents
+                will treat it more cautiously, because more than one person can change what is in it.
+              </p>
+            ) : (
+              <p className="sm-convert-note">
+                This is a personal space — only you can change it. You can convert it to shared if others will work in
+                it too.
+              </p>
+            )}
+            <button
+              type="button"
+              className={convertArmed ? "sm-convert-confirm" : "sm-convert-btn"}
+              disabled={converting}
+              onClick={() => void onConvert()}
+            >
+              {converting ? "Converting…" : convertArmed ? "Convert to shared — cannot be undone" : "Convert to shared…"}
+            </button>
+          </div>
+        )}
 
         <div className="sm-invite">
           <input
