@@ -115,3 +115,60 @@ button:disabled { opacity: .5; cursor: default; }
 .sm-accept { padding: 3px 10px; border-radius: 6px; border: 1px solid transparent; background: var(--sm-accent, #4f8cff); color: #fff; font-weight: 600; cursor: pointer; }
 .sm-pending { margin-top: 12px; border-top: 1px solid var(--sm-border, #2c2f34); padding-top: 10px; }
 .sm-pending-h { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--sm-muted, #9aa0a6); }
+
+/* R3-259 — the create-time kind choice + the shared badge + the convert block. */
+.sm-create-kind {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.sm-create-kind label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.sm-create-note {
+  color: var(--ink-3, #6a677f);
+  font-size: 12px;
+}
+.sm-kind {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line, rgba(180, 170, 225, 0.22));
+  color: var(--ink-2, #9b97b3);
+}
+.sm-kind[data-kind="shared"] {
+  border-color: var(--accent, oklch(0.74 0.17 350));
+  color: var(--accent, oklch(0.74 0.17 350));
+}
+.sm-convert {
+  margin: 4px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, rgba(180, 170, 225, 0.22));
+  border-radius: 10px;
+}
+.sm-convert-note {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.sm-convert-btn,
+.sm-convert-confirm {
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.sm-convert-btn {
+  border: 1px solid var(--line-2, rgba(180, 170, 225, 0.3));
+  background: transparent;
+  color: inherit;
+}
+.sm-convert-confirm {
+  border: none;
+  background: var(--accent, oklch(0.74 0.17 350));
+  color: #0a0b11;
+  font-weight: 600;
+}
