@@ -1,10 +1,11 @@
 // The panel.spaces and page.spaces layouts, driven against the SDK double: the invitee's
 // Invitations inbox, the narrow panel's absence of admin verbs, and the full tab's legacy
 // Manage modal and its stylesheet.
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Invite, SpaceInfo } from "@immediately-run/sdk";
+import type { Invite, SandboxMount, SpaceInfo } from "@immediately-run/sdk";
+import { COPY } from "../data/copy";
 // The shipped stylesheet as text, so the invite-row layout case asserts against what
 // ships. `vitest.config.ts` sets `css: true`; without it this import is empty and that
 // case would pass vacuously.
@@ -170,5 +171,36 @@ describe("PanelSpaces — the narrow panel and the full tab", () => {
     expect(getComputedStyle(input).minWidth).toBe("0px");
 
     style.remove();
+  });
+});
+
+describe("PanelSpaces — the full tab's create", () => {
+  it("draws the new space at its name-sorted position while pending, then settles it and announces", async () => {
+    doubles.listAllSpaces.mockResolvedValue([
+      { spaceId: "a", name: "Alpha", role: "owner" },
+      { spaceId: "z", name: "Zulu", role: "reader" },
+    ]);
+    let settle: (m: Partial<SandboxMount>) => void = () => {};
+    doubles.createSpace.mockReturnValue(new Promise((r) => (settle = r)));
+    const { container } = render(<PanelSpaces fullTab />);
+    await screen.findByText("Alpha");
+
+    await userEvent.click(screen.getByRole("button", { name: COPY.create }));
+    const names = () => [...container.querySelectorAll(".sm-list .sm-row .sm-name")].map((n) => n.textContent);
+    // The host names an unnamed space Untitled space, so it sorts between Alpha and Zulu.
+    expect(names()).toEqual(["Alpha", COPY.untitled, "Zulu"]);
+    const pendingRow = screen.getByText(COPY.untitled).closest("li") as HTMLElement;
+    expect(pendingRow).toHaveAttribute("aria-busy", "true");
+    expect(pendingRow).toHaveTextContent(COPY.creatingRow);
+    expect(within(pendingRow).queryByRole("button", { name: "Manage" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(COPY.creating);
+
+    await act(async () => settle({ id: "s-new", name: COPY.untitled, path: "/mnt/s-new", type: "firestore" }));
+    expect(names()).toEqual(["Alpha", COPY.untitled, "Zulu"]);
+    const settledRow = screen.getByText(COPY.untitled).closest("li") as HTMLElement;
+    expect(settledRow).not.toHaveAttribute("aria-busy");
+    expect(within(settledRow).getByText("owner")).toBeInTheDocument();
+    expect(within(settledRow).getByRole("button", { name: "Manage" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(COPY.created);
   });
 });

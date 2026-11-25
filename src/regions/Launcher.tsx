@@ -33,7 +33,7 @@ export default function Launcher() {
 }
 
 function NothingSelected({ list, onCreate }: { list: SpaceList; onCreate: (kind: SpaceKind) => Promise<void> }) {
-  const lines = launcherLines(list.state);
+  const lines = launcherLines(list.state, list.pendingKind);
   return (
     <section className="launch-empty" aria-label={COPY.heading}>
       <div className="launch-doors">
@@ -41,9 +41,11 @@ function NothingSelected({ list, onCreate }: { list: SpaceList; onCreate: (kind:
         <ConnectSourceEntry onConnected={list.reload} />
       </div>
       {lines.pick && (
-        <div className="launch-lines">
+        <div className="launch-lines" aria-busy={lines.pending || undefined}>
           <p>{COPY.pickASpace}</p>
-          {lines.count !== null && <p>{spaceCountLine(lines.count)}</p>}
+          {lines.count !== null && (
+            <p className={lines.pending ? "launch-count is-pending" : "launch-count"}>{spaceCountLine(lines.count)}</p>
+          )}
         </div>
       )}
     </section>

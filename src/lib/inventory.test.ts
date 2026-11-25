@@ -215,13 +215,23 @@ describe("shouldRelist", () => {
 
 describe("launcherLines", () => {
   it("shows the pick line while loading and once ready, and the count only once ready", () => {
-    expect(launcherLines({ status: "loading" })).toEqual({ pick: true, count: null });
-    expect(launcherLines({ status: "ready", spaces: [space("a", "A"), space("b", "B")] })).toEqual({ pick: true, count: 2 });
+    expect(launcherLines({ status: "loading" }, null)).toEqual({ pick: true, count: null, pending: false });
+    expect(launcherLines({ status: "ready", spaces: [space("a", "A"), space("b", "B")] }, null)).toEqual({
+      pick: true,
+      count: 2,
+      pending: false,
+    });
+  });
+
+  it("counts the space being created, marked pending, before the create settles", () => {
+    const ready = { status: "ready" as const, spaces: [space("a", "A"), space("b", "B")] };
+    expect(launcherLines(ready, "personal")).toEqual({ pick: true, count: 3, pending: true });
+    expect(launcherLines({ status: "loading" }, "shared")).toEqual({ pick: true, count: null, pending: false });
   });
 
   it("shows neither line when the host refused or the list failed", () => {
     for (const status of ["refused", "auth-required", "failed"] as const) {
-      expect(launcherLines({ status })).toEqual({ pick: false, count: null });
+      expect(launcherLines({ status }, null)).toEqual({ pick: false, count: null, pending: false });
     }
   });
 });

@@ -45,12 +45,19 @@ describe("Launcher, nothing selected", () => {
     await userEvent.click(screen.getByRole("button", { name: COPY.create }));
     expect(doubles.createSpace).toHaveBeenCalledWith({ kind: "shared" });
     expect(screen.getByRole("button", { name: COPY.creating })).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent("");
+    // Before the create settles, the main pane already shows the change: the count
+    // includes the new space in a pending treatment, and the live region says so.
+    const pendingCount = screen.getByText("3 spaces.");
+    expect(pendingCount).toHaveClass("is-pending");
+    expect(pendingCount.parentElement).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("status")).toHaveTextContent(COPY.creating);
     expect(doubles.navigateSpaces).not.toHaveBeenCalled();
 
     await act(async () => settle(mount("s-new")));
     expect(screen.getByRole("status")).toHaveTextContent(COPY.created);
-    expect(screen.getByText("3 spaces.")).toBeInTheDocument();
+    const settledCount = screen.getByText("3 spaces.");
+    expect(settledCount).not.toHaveClass("is-pending");
+    expect(settledCount.parentElement).not.toHaveAttribute("aria-busy");
     expect(doubles.navigateSpaces).toHaveBeenCalledTimes(1);
     expect(doubles.navigateSpaces).toHaveBeenCalledWith({ spaceId: "s-new", activity: "spaces" });
 

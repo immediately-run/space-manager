@@ -103,11 +103,19 @@ export function shouldRelist(state: ListState, routedId: string | null, relisted
 
 /**
  * What the main pane says with nothing selected: *Pick a space…* while the list can be
- * shown, and the count once it is loaded. A list the host refused or failed shows neither.
+ * shown, and the count once it is loaded. While a create is in flight the count already
+ * includes the new space and is marked pending, so the change shows before it settles.
+ * A list the host refused or failed shows neither line.
  */
-export function launcherLines(state: ListState): { pick: boolean; count: number | null } {
-  if (state.status === "ready") return { pick: true, count: state.spaces.length };
-  return { pick: state.status === "loading", count: null };
+export function launcherLines(
+  state: ListState,
+  pendingKind: SpaceKind | null,
+): { pick: boolean; count: number | null; pending: boolean } {
+  if (state.status === "ready") {
+    const pending = pendingKind !== null;
+    return { pick: true, count: state.spaces.length + (pending ? 1 : 0), pending };
+  }
+  return { pick: state.status === "loading", count: null, pending: false };
 }
 
 // --- the pending create -------------------------------------------------------------

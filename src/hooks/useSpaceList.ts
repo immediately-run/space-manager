@@ -62,7 +62,8 @@ export function useSpaceList(): SpaceList {
   const create = useCallback(
     async (kind: SpaceKind): Promise<string | null> => {
       setPendingKind(kind);
-      setAnnouncement("");
+      // The wait is announced at dispatch, then replaced by the settle.
+      setAnnouncement(COPY.creating);
       try {
         // The host takes `kind` on the wire; the pinned SDK types only `name`, so the
         // options are widened here. The host validates the literal either way.
@@ -78,12 +79,11 @@ export function useSpaceList(): SpaceList {
         setAnnouncement(COPY.created);
         return mount.id ?? null;
       } catch (e) {
-        // A cancel is the reader dismissing the host's consent: nothing to say.
+        // A cancel is the reader dismissing the host's consent: the wait line clears and
+        // nothing else is said.
         const line = createFailureLine(e);
-        if (line !== null) {
-          console.error("space-manager: createSpace failed", e);
-          setAnnouncement(line);
-        }
+        if (line !== null) console.error("space-manager: createSpace failed", e);
+        setAnnouncement(line ?? "");
         return null;
       } finally {
         setPendingKind(null);
