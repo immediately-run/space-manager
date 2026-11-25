@@ -1,14 +1,24 @@
-// Root component — immediately.run renders the default export of THIS file.
-// The space manager as an app (UI_AS_APPS_SPEC §5.2): lists the user's spaces,
-// and for spaces they own, manages membership — invite by handle, change roles,
-// remove members. Elevated `spaces:user` (enumerate) + `spaces:admin` (mutate).
-// The host enforces the owner-lockout invariant and owns the handle lookup; the
-// identity token never reaches this app.
+// Root component: immediately.run renders the default export of this file.
+// The space manager is one app bound at several regions; each region renders its own
+// component, chosen here by the region the host reports.
 import "./index.css";
-import SpaceManager from "./components/SpaceManager";
+import { useRegion } from "@immediately-run/sdk";
+import { viewForRegion } from "./lib/regions";
+import Inventory from "./regions/Inventory";
+import Launcher from "./regions/Launcher";
+import PanelSpaces from "./regions/PanelSpaces";
 
 function App() {
-  return <SpaceManager />;
+  switch (viewForRegion(useRegion())) {
+    case "launcher":
+      return <Launcher />;
+    case "panel":
+      return <PanelSpaces fullTab={false} />;
+    case "page":
+      return <PanelSpaces fullTab />;
+    case "inventory":
+      return <Inventory />;
+  }
 }
 
 export default App;

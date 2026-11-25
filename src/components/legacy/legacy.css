@@ -1,52 +1,7 @@
-.sm {
-  font: 13px/1.5 system-ui, -apple-system, sans-serif;
-  color: var(--sm-fg, #e6e6e6);
-  background: var(--sm-bg, #1b1d21);
-  padding: 12px;
-  min-width: 240px;
-}
-.sm-hd {
-  display: flex; align-items: center; gap: 12px;
-  margin-bottom: 8px;
-}
-.sm-title { font-weight: 600; font-size: 14px; }
-.sm-create { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
-
-/* SPACES_UI_SPEC §5: the standalone full-tab surface (the `/spaces` route, the
-   `page.spaces` binding). Roomier than the narrow `panel.spaces` column — centered
-   with a comfortable max width, the whole viewport as canvas. */
-.sm-full {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 24px 20px;
-  min-height: 100%;
-  box-sizing: border-box;
-}
-.sm-full .sm-title { font-size: 18px; }
-.sm-msg { color: var(--sm-muted, #9aa0a6); padding: 8px 0; }
-
-.sm-list { list-style: none; margin: 0; padding: 0; }
-.sm-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 6px; border-radius: 6px;
-}
-.sm-row:hover { background: var(--sm-hover, #23262b); }
-.sm-row-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-.sm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sm-role, [data-role] {
-  font-size: 11px; padding: 1px 7px; border-radius: 999px;
-  background: var(--sm-chip, #2c2f34); color: var(--sm-muted, #9aa0a6);
-}
-.sm-role[data-role="owner"] { color: #ffd479; }
-.sm-manage, .sm-add, .sm-remove {
-  appearance: none; border: 1px solid var(--sm-border, #2c2f34);
-  background: transparent; color: inherit; border-radius: 6px;
-  padding: 4px 10px; cursor: pointer; font: inherit;
-}
-.sm-add { background: var(--sm-accent, #4f8cff); color: #fff; border-color: transparent; font-weight: 600; }
-.sm-manage:hover, .sm-remove:hover { background: var(--sm-hover, #23262b); }
-button:disabled { opacity: .5; cursor: default; }
-
+/* The legacy Manage modal and grant audit, rendered only under the full-tab page.spaces
+   surface. They sit inside PanelSpaces' `.sm` tree and use its shared controls
+   (`.sm-add`, `.sm-remove`, `.sm-select`, `.sm-role`, `.sm-av`, `.sm-err`, `.sm-msg`);
+   this sheet holds only what is theirs, and goes with them. */
 .sm-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,.5);
   display: grid; place-items: start center; padding-top: 10vh; z-index: 50;
@@ -81,22 +36,14 @@ button:disabled { opacity: .5; cursor: default; }
   background: var(--sm-input-bg, #111317); color: inherit;
   border: 1px solid var(--sm-border, #2c2f34); border-radius: 6px; padding: 7px 9px; font: inherit;
 }
-.sm-select {
-  background: var(--sm-input-bg, #111317); color: inherit;
-  border: 1px solid var(--sm-border, #2c2f34); border-radius: 6px; padding: 6px; font: inherit;
-}
 /* Scoped to this row so the shared button/select styling is untouched elsewhere:
    the two fixed-size controls hold their size and the input absorbs the change. */
 .sm-invite .sm-select, .sm-invite .sm-add { flex: 0 0 auto; }
-.sm-err { color: #ffb4b4; font-size: 12px; margin-top: 8px; }
-
 .sm-members { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
 .sm-member { display: flex; align-items: center; gap: 8px; }
-.sm-av { width: 22px; height: 22px; border-radius: 50%; flex: none; }
-.sm-av-ph { background: var(--sm-chip, #2c2f34); }
 .sm-member-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* §8.11 audit view — which apps can reach which spaces, with one-click revoke. */
+/* The audit view — which apps can reach which spaces, with one-click revoke. */
 .sm-audit { margin-top: 18px; border-top: 1px solid var(--sm-border, #2c2f34); padding-top: 12px; }
 .sm-audit-h { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--sm-muted, #9aa0a6); }
 .sm-audit-app { margin-bottom: 10px; }
@@ -106,44 +53,9 @@ button:disabled { opacity: .5; cursor: default; }
 .sm-audit-space { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sm-audit-scope { font-size: 11px; color: var(--sm-muted, #9aa0a6); }
 
-/* §6.4 Invitations inbox (invitee) + owner pending list. */
-.sm-invites { margin: 4px 0 14px; border-bottom: 1px solid var(--sm-border, #2c2f34); padding-bottom: 12px; }
-.sm-invites-h { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--sm-muted, #9aa0a6); }
-.sm-invite-list { list-style: none; margin: 0; padding: 0; }
-.sm-invite-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
-.sm-invite-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sm-accept { padding: 3px 10px; border-radius: 6px; border: 1px solid transparent; background: var(--sm-accent, #4f8cff); color: #fff; font-weight: 600; cursor: pointer; }
 .sm-pending { margin-top: 12px; border-top: 1px solid var(--sm-border, #2c2f34); padding-top: 10px; }
 .sm-pending-h { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--sm-muted, #9aa0a6); }
 
-/* R3-259 — the create-time kind choice + the shared badge + the convert block. */
-.sm-create-kind {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-}
-.sm-create-kind label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-}
-.sm-create-note {
-  color: var(--ink-3, #6a677f);
-  font-size: 12px;
-}
-.sm-kind {
-  font-size: 11px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  border: 1px solid var(--line, rgba(180, 170, 225, 0.22));
-  color: var(--ink-2, #9b97b3);
-}
-.sm-kind[data-kind="shared"] {
-  border-color: var(--accent, oklch(0.74 0.17 350));
-  color: var(--accent, oklch(0.74 0.17 350));
-}
 .sm-convert {
   margin: 4px 0 14px;
   padding: 10px 12px;

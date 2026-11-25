@@ -1,0 +1,9 @@
+/* Connect Google Drive: a hairline pill beside the create door. */
+.connect { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.connect .btn-ghost { font-size: 14px; padding: 9px 18px; }
+.connect .btn-ghost:disabled { cursor: default; color: var(--ink-3); }
+.connect-err { color: #ffb4b4; font-size: 12px; }
+
+@media (max-width: 480px) {
+  .connect .btn-ghost { min-height: 44px; }
+}
