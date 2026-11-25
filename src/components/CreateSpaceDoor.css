@@ -1,0 +1,10 @@
+/* The create door: the gradient primary with the personal-or-shared choice beside it. */
+.door { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.door-kind { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font: 400 13px var(--sans); color: var(--ink-2); }
+.door-kind label { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; cursor: pointer; }
+.door-note { color: var(--ink-3); font-size: 12px; }
+.door .btn:disabled { cursor: default; filter: saturate(.6); }
+
+@media (max-width: 480px) {
+  .door .btn, .door-kind label { min-height: 44px; }
+}

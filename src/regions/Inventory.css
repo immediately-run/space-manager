@@ -1,0 +1,40 @@
+/* The Spaces activity's panel (board 01): eyebrow, heading, the listbox of spaces, the
+   pointer line to notifications. Rows carry no fill and no count. */
+.inv { display: flex; flex-direction: column; gap: 14px; padding: 18px 14px; font: 400 14px/1.45 var(--sans); color: var(--ink); }
+.inv-hd { display: flex; flex-direction: column; gap: 6px; }
+.inv-h { font: 800 22px/1.1 var(--disp); letter-spacing: -.02em; }
+.inv-msg, .inv-refused { color: var(--ink-2); }
+.inv-refused { padding: 18px 14px; font: 400 14px/1.45 var(--sans); }
+.inv-empty { display: flex; flex-direction: column; gap: 14px; }
+
+.inv-list, .inv-skeleton { list-style: none; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-md); }
+.inv-list:focus-visible { outline: none; box-shadow: var(--glow); }
+
+.inv-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px 12px; cursor: pointer; border-top: 1px solid var(--line); }
+.inv-row:first-child { border-top: 0; }
+.inv-row:hover, .inv-row.is-active { background: var(--panel-2); }
+.inv-row.is-selected { box-shadow: inset 2px 0 0 var(--accent-2); }
+.inv-row.is-pending { cursor: default; color: var(--ink-2); }
+.inv-row-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.inv-row-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-row-pending { font: 400 11px var(--mono); color: var(--ink-3); }
+
+.role-chip { font: 400 12px var(--mono); color: var(--ink-3); }
+
+/* Open: a hairline pill on hover and on the focused option; the gradient primary is the
+   create door's until a space is selected. */
+.inv-row-open { visibility: hidden; min-height: 24px; padding: 3px 12px; border: 1px solid var(--line-2); border-radius: var(--r-pill); background: transparent; color: var(--ink); font: 600 12px var(--sans); cursor: pointer; }
+.inv-row:hover .inv-row-open, .inv-row.is-active .inv-row-open { visibility: visible; }
+.inv-row-open:hover { border-color: var(--accent-2); }
+
+.inv-skeleton-row { height: 44px; border-top: 1px solid var(--line); background: linear-gradient(90deg, transparent, var(--panel-2), transparent); }
+.inv-skeleton-row:first-child { border-top: 0; }
+
+.inv-invites { align-self: flex-start; min-height: 24px; border: 0; background: none; padding: 0; color: var(--ink-2); font: 400 13px var(--sans); cursor: pointer; }
+.inv-invites:hover { color: var(--ink); }
+
+.inv-status { min-height: 1.45em; font-size: 12px; color: var(--ink-2); }
+
+@media (max-width: 480px) {
+  .inv-row-open, .inv-invites { min-height: 44px; }
+}

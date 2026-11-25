@@ -1,0 +1,5 @@
+/* The main pane with nothing selected (board 01): the doors, then the two lines. */
+.launch-empty { display: flex; flex-direction: column; gap: 22px; padding: 28px 24px; font: 400 14px/1.5 var(--sans); color: var(--ink); }
+.launch-doors { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.launch-lines { display: flex; flex-direction: column; gap: 4px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--ink-2); }
+.launch-status { min-height: 1.5em; font-size: 12px; color: var(--ink-2); }

@@ -1,0 +1,75 @@
+/* The narrow panel.spaces list and the full-tab page.spaces surface: the spaces list,
+   the Invitations inbox, and the controls the legacy Manage and audit views share. */
+.sm {
+  font: 13px/1.5 system-ui, -apple-system, sans-serif;
+  color: var(--sm-fg, #e6e6e6);
+  background: var(--sm-bg, #1b1d21);
+  padding: 12px;
+  min-width: 240px;
+}
+.sm-hd {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 8px;
+}
+.sm-title { font-weight: 600; font-size: 14px; }
+.sm-create { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* The full-tab surface (the page.spaces binding): roomier than the narrow column,
+   centred with a comfortable max width, the whole viewport as canvas. */
+.sm-full {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 20px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+.sm-full .sm-title { font-size: 18px; }
+.sm-msg { color: var(--sm-muted, #9aa0a6); padding: 8px 0; }
+
+.sm-list { list-style: none; margin: 0; padding: 0; }
+.sm-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 6px; border-radius: 6px;
+}
+.sm-row:hover { background: var(--sm-hover, #23262b); }
+.sm-row-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.sm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm-role {
+  font-size: 11px; padding: 1px 7px; border-radius: 999px;
+  background: var(--sm-chip, #2c2f34); color: var(--sm-muted, #9aa0a6);
+}
+.sm-role[data-role="owner"] { color: #ffd479; }
+.sm-kind {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line, rgba(180, 170, 225, 0.22));
+  color: var(--ink-2, #9b97b3);
+}
+.sm-kind[data-kind="shared"] {
+  border-color: var(--accent, oklch(0.74 0.17 350));
+  color: var(--accent, oklch(0.74 0.17 350));
+}
+.sm-manage, .sm-add, .sm-remove {
+  appearance: none; border: 1px solid var(--sm-border, #2c2f34);
+  background: transparent; color: inherit; border-radius: 6px;
+  padding: 4px 10px; cursor: pointer; font: inherit;
+}
+.sm-add { background: var(--sm-accent, #4f8cff); color: #fff; border-color: transparent; font-weight: 600; }
+.sm-manage:hover, .sm-remove:hover { background: var(--sm-hover, #23262b); }
+.sm button:disabled { opacity: .5; cursor: default; }
+.sm-select {
+  background: var(--sm-input-bg, #111317); color: inherit;
+  border: 1px solid var(--sm-border, #2c2f34); border-radius: 6px; padding: 6px; font: inherit;
+}
+.sm-err { color: #ffb4b4; font-size: 12px; margin-top: 8px; }
+.sm-av { width: 22px; height: 22px; border-radius: 50%; flex: none; }
+.sm-av-ph { background: var(--sm-chip, #2c2f34); }
+
+/* The Invitations inbox (invitee side). */
+.sm-invites { margin: 4px 0 14px; border-bottom: 1px solid var(--sm-border, #2c2f34); padding-bottom: 12px; }
+.sm-invites-h { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--sm-muted, #9aa0a6); }
+.sm-invite-list { list-style: none; margin: 0; padding: 0; }
+.sm-invite-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.sm-invite-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm-accept { padding: 3px 10px; border-radius: 6px; border: 1px solid transparent; background: var(--sm-accent, #4f8cff); color: #fff; font-weight: 600; cursor: pointer; }
