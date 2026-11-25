@@ -11,17 +11,15 @@ export default function SpaceRow({
   row,
   selected,
   active,
-  pending,
   onOpen,
 }: {
   optionId: string;
   row: InventoryRow;
   selected: boolean;
   active: boolean;
-  pending: boolean;
   onOpen: () => void;
 }) {
-  const className = ["inv-row", selected && "is-selected", active && "is-active", pending && "is-pending"]
+  const className = ["inv-row", selected && "is-selected", active && "is-active"]
     .filter((c): c is string => typeof c === "string")
     .join(" ");
   return (
@@ -29,10 +27,9 @@ export default function SpaceRow({
       id={optionId}
       role="option"
       aria-selected={selected}
-      aria-disabled={pending || undefined}
       aria-labelledby={`${optionId}-name ${optionId}-meta`}
       className={className}
-      onClick={pending ? undefined : onOpen}
+      onClick={onOpen}
     >
       <span className="inv-row-main">
         <span className="inv-row-name" id={`${optionId}-name`}>
@@ -40,22 +37,18 @@ export default function SpaceRow({
         </span>
         <RoleChip id={`${optionId}-meta`} roleLabel={row.roleLabel} modeLabel={row.modeLabel} />
       </span>
-      {pending ? (
-        <span className="inv-row-pending">{COPY.creatingRow}</span>
-      ) : (
-        <button
-          type="button"
-          className="inv-row-open"
-          tabIndex={-1}
-          aria-hidden="true"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpen();
-          }}
-        >
-          {COPY.open}
-        </button>
-      )}
+      <button
+        type="button"
+        className="inv-row-open"
+        tabIndex={-1}
+        aria-hidden="true"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen();
+        }}
+      >
+        {COPY.open}
+      </button>
     </li>
   );
 }

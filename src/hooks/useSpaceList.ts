@@ -1,8 +1,9 @@
 // The reader's spaces as one region sees them: the load state, the create in flight, and
 // the line the region's live region announces. Each frame holds its own copy; spaces are
-// not pushed by the host, so a frame learns of a change by its own write or a reload.
-import { useCallback, useEffect, useState } from "react";
-import { createSpace, listAllSpaces } from "@immediately-run/sdk";
+// not pushed by the host, so a frame learns of a change by its own write or a reload
+// (the inventory reloads when the host's route names a space it does not list).
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createSpace, listAllSpaces, navigateSpaces, type SpacesTarget } from "@immediately-run/sdk";
 import { COPY } from "../data/copy";
 import {
   createFailureLine,
@@ -18,26 +19,37 @@ export interface SpaceList {
   pendingKind: SpaceKind | null;
   /** The last settle, for the region's `role="status"`. */
   announcement: string;
-  announce: (line: string) => void;
   reload: () => Promise<void>;
-  create: (kind: SpaceKind) => Promise<void>;
+  /** Creates a space; resolves to the new space's id, or null when none settled. */
+  create: (kind: SpaceKind) => Promise<string | null>;
+  /** Asks the host to move; a refusal is logged and `failLine` is announced. */
+  navigate: (target: SpacesTarget, failLine: string) => void;
 }
 
 export function useSpaceList(): SpaceList {
   const [state, setState] = useState<ListState>({ status: "loading" });
   const [pendingKind, setPendingKind] = useState<SpaceKind | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  // Only the newest list request may land: an older one answering late (the first load,
+  // started before a create) would otherwise overwrite a list that has the new space.
+  const latestLoad = useRef(0);
+  const current = useRef(state);
+  useEffect(() => {
+    current.current = state;
+  }, [state]);
 
   const reload = useCallback(async () => {
+    const seq = ++latestLoad.current;
+    let next: ListState;
     try {
-      setState({ status: "ready", spaces: await listAllSpaces() });
+      next = { status: "ready", spaces: await listAllSpaces() };
     } catch (e) {
-      const next = listStateFromError(e);
+      next = listStateFromError(e);
       // auth-required renders nothing and failed renders a generic line; both are
       // logged so the cause is not lost.
       if (next.status !== "refused") console.error("space-manager: listAllSpaces failed", e);
-      setState(next);
     }
+    if (seq === latestLoad.current) setState(next);
   }, []);
 
   useEffect(() => {
@@ -48,7 +60,7 @@ export function useSpaceList(): SpaceList {
   }, [reload]);
 
   const create = useCallback(
-    async (kind: SpaceKind) => {
+    async (kind: SpaceKind): Promise<string | null> => {
       setPendingKind(kind);
       setAnnouncement("");
       try {
@@ -56,18 +68,23 @@ export function useSpaceList(): SpaceList {
         // options are widened here. The host validates the literal either way.
         const mount = await createSpace({ kind } as unknown as Parameters<typeof createSpace>[0]);
         const space = settledSpace(mount, kind);
-        if (space) {
+        if (space && current.current.status === "ready") {
+          // The create's own answer is the new row; no list round-trip.
           setState((s) => (s.status === "ready" ? { status: "ready", spaces: [...s.spaces, space] } : s));
         } else {
+          // No id to build the row from, or no settled list to add it to: ask again.
           await reload();
         }
         setAnnouncement(COPY.created);
+        return mount.id ?? null;
       } catch (e) {
         // A cancel is the reader dismissing the host's consent: nothing to say.
         const line = createFailureLine(e);
-        if (line === null) return;
-        console.error("space-manager: createSpace failed", e);
-        setAnnouncement(line);
+        if (line !== null) {
+          console.error("space-manager: createSpace failed", e);
+          setAnnouncement(line);
+        }
+        return null;
       } finally {
         setPendingKind(null);
       }
@@ -75,5 +92,12 @@ export function useSpaceList(): SpaceList {
     [reload],
   );
 
-  return { state, pendingKind, announcement, announce: setAnnouncement, reload, create };
+  const navigate = useCallback((target: SpacesTarget, failLine: string) => {
+    navigateSpaces(target).catch((e: unknown) => {
+      console.error("space-manager: navigateSpaces refused", e);
+      setAnnouncement(failLine);
+    });
+  }, []);
+
+  return { state, pendingKind, announcement, reload, create, navigate };
 }

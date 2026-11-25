@@ -5,6 +5,8 @@ import {
   PENDING_ID,
   activeOption,
   createFailureLine,
+  launcherLines,
+  shouldRelist,
   inventoryItems,
   inventoryRow,
   inviteLine,
@@ -184,12 +186,42 @@ describe("listbox movement", () => {
   });
 
   it("starts on the selected space, follows the reader's moves, and stays inside a shrinking list", () => {
-    const items = inventoryItems([space("a", "A"), space("b", "B"), space("c", "C")], null);
+    const items = [space("a", "A"), space("b", "B"), space("c", "C")];
     expect(activeOption(items, "b", null)).toBe(1);
     expect(activeOption(items, null, null)).toBe(0);
     expect(activeOption(items, "gone", null)).toBe(0);
     expect(activeOption(items, "b", 2)).toBe(2);
     expect(activeOption(items.slice(0, 1), "a", 2)).toBe(0);
     expect(activeOption([], null, 3)).toBe(0);
+  });
+});
+
+describe("shouldRelist", () => {
+  const ready = { status: "ready" as const, spaces: [space("a", "A")] };
+
+  it("re-lists once for a routed space the list does not have", () => {
+    expect(shouldRelist(ready, "new", null)).toBe(true);
+    expect(shouldRelist(ready, "new", "new")).toBe(false);
+  });
+
+  it("does not re-list for a listed space, no selection, or a list that is not ready", () => {
+    expect(shouldRelist(ready, "a", null)).toBe(false);
+    expect(shouldRelist(ready, null, null)).toBe(false);
+    for (const status of ["loading", "refused", "auth-required", "failed"] as const) {
+      expect(shouldRelist({ status }, "new", null)).toBe(false);
+    }
+  });
+});
+
+describe("launcherLines", () => {
+  it("shows the pick line while loading and once ready, and the count only once ready", () => {
+    expect(launcherLines({ status: "loading" })).toEqual({ pick: true, count: null });
+    expect(launcherLines({ status: "ready", spaces: [space("a", "A"), space("b", "B")] })).toEqual({ pick: true, count: 2 });
+  });
+
+  it("shows neither line when the host refused or the list failed", () => {
+    for (const status of ["refused", "auth-required", "failed"] as const) {
+      expect(launcherLines({ status })).toEqual({ pick: false, count: null });
+    }
   });
 });

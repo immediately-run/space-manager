@@ -50,12 +50,12 @@ export function inventoryRow(space: SpaceInfo): InventoryRow {
 /** The pointer line to invitations in notifications, or null when none are waiting. */
 export function inviteLine(count: number): string | null {
   if (count <= 0) return null;
-  return `${count} ${count === 1 ? "invitation" : "invitations"} waiting in notifications →`;
+  return `${count} ${count === 1 ? COPY.invitation : COPY.invitations} ${COPY.waitingInNotifications}`;
 }
 
 /** The main pane's count line with nothing selected. */
 export function spaceCountLine(count: number): string {
-  return `${count} ${count === 1 ? "space" : "spaces"}.`;
+  return `${count} ${count === 1 ? COPY.space : COPY.spaces}.`;
 }
 
 // --- the list's load state ----------------------------------------------------------
@@ -89,6 +89,25 @@ export function createFailureLine(e: unknown): string | null {
   const code = codeOf(e);
   if (code === "cancelled") return null;
   return code === "quota-exceeded" ? COPY.createQuota : COPY.createFailed;
+}
+
+/**
+ * Whether the inventory should list again because the host's route selects a space it
+ * does not list: one just created in the main pane, or one accepted from notifications.
+ * Once per routed id, so a space the reader cannot list does not loop.
+ */
+export function shouldRelist(state: ListState, routedId: string | null, relistedFor: string | null): boolean {
+  if (state.status !== "ready" || routedId === null || routedId === relistedFor) return false;
+  return !state.spaces.some((s) => s.spaceId === routedId);
+}
+
+/**
+ * What the main pane says with nothing selected: *Pick a space…* while the list can be
+ * shown, and the count once it is loaded. A list the host refused or failed shows neither.
+ */
+export function launcherLines(state: ListState): { pick: boolean; count: number | null } {
+  if (state.status === "ready") return { pick: true, count: state.spaces.length };
+  return { pick: state.status === "loading", count: null };
 }
 
 // --- the pending create -------------------------------------------------------------
@@ -149,9 +168,9 @@ export function nextActiveIndex(key: string, index: number, count: number): numb
  * The option the listbox's focus sits on: the one the reader moved to, kept inside the
  * list as it shrinks, else the selected space, else the first.
  */
-export function activeOption(items: readonly InventoryItem[], selectedId: string | null, moved: number | null): number {
-  if (items.length === 0) return 0;
-  if (moved !== null) return Math.min(moved, items.length - 1);
-  const selected = items.findIndex((i) => i.space.spaceId === selectedId);
+export function activeOption(spaces: readonly SpaceInfo[], selectedId: string | null, moved: number | null): number {
+  if (spaces.length === 0) return 0;
+  if (moved !== null) return Math.min(moved, spaces.length - 1);
+  const selected = spaces.findIndex((s) => s.spaceId === selectedId);
   return selected >= 0 ? selected : 0;
 }

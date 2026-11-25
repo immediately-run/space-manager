@@ -40,9 +40,9 @@ describe("App", () => {
   it("the launcher's create door yields once a space is selected", () => {
     live.region = REGION.launcher;
     live.mode = { route: { spaceId: "s1", activity: "spaces" }, space: null };
-    const { container } = render(<App />);
+    render(<App />);
     expect(screen.queryByRole("button", { name: COPY.create })).not.toBeInTheDocument();
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText(COPY.pickASpace)).not.toBeInTheDocument();
   });
 
   it("renders PanelSpaces in its narrow layout for panel.spaces", async () => {

@@ -13,6 +13,15 @@ export const COPY = {
   listFailed: "Couldn’t load spaces.",
   openFailed: "Couldn’t open that space.",
 
+  openNotificationsFailed: "Couldn’t open your notifications.",
+
+  // The pointer line and the count line; lib/inventory.ts picks singular or plural.
+  invitation: "invitation",
+  invitations: "invitations",
+  waitingInNotifications: "waiting in notifications →",
+  space: "space",
+  spaces: "spaces",
+
   // The main pane with nothing selected.
   pickASpace: "Pick a space to see its files.",
 

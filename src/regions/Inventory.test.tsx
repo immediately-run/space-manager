@@ -2,7 +2,7 @@
 import { render, screen, waitFor, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Invite, SandboxMount, SpaceInfo, SpacesModeState } from "@immediately-run/sdk";
+import type { Invite, SpaceInfo, SpacesModeState } from "@immediately-run/sdk";
 import { COPY } from "../data/copy";
 import type { InventorySpace } from "../lib/inventory";
 import { doubles, push, refusal, resetDoubles } from "../test/sdkDouble";
@@ -119,10 +119,9 @@ describe("Inventory", () => {
     expect(screen.queryByRole("button", { name: /waiting in notifications/ })).not.toBeInTheDocument();
   });
 
-  it("an empty list shows the brief's sentence with the create door as the primary", async () => {
+  it("an empty list shows the brief's sentence", async () => {
     render(<Inventory />);
     expect(await screen.findByText(COPY.empty)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: COPY.create })).toHaveClass("btn");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
@@ -159,49 +158,50 @@ describe("Inventory", () => {
     expect(container.querySelectorAll(".inv-skeleton-row")).toHaveLength(0);
   });
 
-  it("a pending create shows the row pending, then settled, and the status region reads the settle", async () => {
-    doubles.listAllSpaces.mockResolvedValue([]);
-    let settle: (m: Partial<SandboxMount>) => void = () => {};
-    doubles.createSpace.mockReturnValue(new Promise((r) => (settle = r)));
+  it("re-lists when the pushed route selects a space it does not list, and shows it selected", async () => {
+    // The main pane created "New one" and moved the mode to it; this frame never saw the create.
+    doubles.listAllSpaces
+      .mockResolvedValueOnce(spaces)
+      .mockResolvedValue([...spaces, { spaceId: "s-new", name: "New one", role: "owner", kind: "personal" } as InventorySpace]);
     render(<Inventory />);
-
-    await userEvent.click(await screen.findByRole("radio", { name: COPY.kindShared }));
-    await userEvent.click(screen.getByRole("button", { name: COPY.create }));
-    expect(doubles.createSpace).toHaveBeenCalledWith({ kind: "shared" });
-
-    // Pending: the row is in the list at its final position, and the door is busy.
-    const pending = await screen.findByRole("option", { name: /Untitled space/ });
-    expect(pending).toHaveAttribute("aria-disabled", "true");
-    expect(pending).toHaveTextContent(COPY.creatingRow);
-    expect(screen.getByRole("button", { name: COPY.creating })).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent("");
-
-    await act(async () => settle({ id: "s-new", name: "Untitled space", path: "/mnt/s-new", type: "firestore" }));
-
-    const settled = await screen.findByRole("option", { name: /Untitled space/ });
-    expect(settled).not.toHaveAttribute("aria-disabled");
-    expect(settled).toHaveTextContent("owner · shared");
-    expect(screen.getByRole("status")).toHaveTextContent(COPY.created);
-    // The new space came from createSpace's own answer, not a second list round-trip.
+    await screen.findByRole("listbox");
     expect(doubles.listAllSpaces).toHaveBeenCalledTimes(1);
+
+    await push({ mode: mode("s-new") });
+    expect(await screen.findByRole("option", { name: /New one/ })).toHaveAttribute("aria-selected", "true");
+    expect(doubles.listAllSpaces).toHaveBeenCalledTimes(2);
   });
 
-  it("a failed create removes the pending row and announces why", async () => {
-    doubles.createSpace.mockRejectedValue(refusal("quota-exceeded"));
+  it("does not re-list for a routed space it already lists, nor twice for one it cannot list", async () => {
+    doubles.listAllSpaces.mockResolvedValue(spaces);
     render(<Inventory />);
-    await userEvent.click(await screen.findByRole("button", { name: COPY.create }));
-    expect(await screen.findByRole("status")).toHaveTextContent(COPY.createQuota);
-    expect(screen.queryByRole("option")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: COPY.create })).toBeEnabled();
+    await screen.findByRole("listbox");
+    await push({ mode: mode("s-fin") });
+    expect(doubles.listAllSpaces).toHaveBeenCalledTimes(1);
+
+    await push({ mode: mode("s-not-mine") });
+    await waitFor(() => expect(doubles.listAllSpaces).toHaveBeenCalledTimes(2));
+    // The second answer still lacks it; the panel does not ask again.
+    await act(async () => {});
+    expect(doubles.listAllSpaces).toHaveBeenCalledTimes(2);
   });
 
-  it("a cancelled create is calm: no row, no announcement", async () => {
-    doubles.createSpace.mockRejectedValue(refusal("cancelled"));
+  it("marks the active option only while the listbox has focus", async () => {
+    doubles.listAllSpaces.mockResolvedValue(spaces);
+    const { container } = render(<Inventory />);
+    const listbox = await screen.findByRole("listbox");
+    expect(container.querySelectorAll(".inv-row.is-active")).toHaveLength(0);
+    act(() => listbox.focus());
+    expect(container.querySelectorAll(".inv-row.is-active")).toHaveLength(1);
+    act(() => listbox.blur());
+    expect(container.querySelectorAll(".inv-row.is-active")).toHaveLength(0);
+  });
+
+  it("offers no create door: the main pane holds the one primary", async () => {
     render(<Inventory />);
-    await userEvent.click(await screen.findByRole("button", { name: COPY.create }));
-    await waitFor(() => expect(screen.getByRole("button", { name: COPY.create })).toBeEnabled());
-    expect(screen.getByRole("status")).toHaveTextContent("");
-    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+    await screen.findByText(COPY.empty);
+    expect(screen.queryByRole("button", { name: COPY.create })).not.toBeInTheDocument();
+    expect(document.querySelector(".btn")).toBeNull();
   });
 
   it("a refused navigation is announced, not thrown", async () => {
@@ -210,6 +210,16 @@ describe("Inventory", () => {
     render(<Inventory />);
     await userEvent.click(await screen.findByRole("option", { name: /Finance team/ }));
     expect(await screen.findByRole("status")).toHaveTextContent(COPY.openFailed);
+  });
+
+  it("a refused move to notifications says notifications, not a space", async () => {
+    doubles.listAllSpaces.mockResolvedValue(spaces);
+    doubles.navigateSpaces.mockRejectedValue(refusal("unsupported"));
+    render(<Inventory />);
+    await screen.findByRole("listbox");
+    await push({ invites: [invite("i1")] });
+    await userEvent.click(screen.getByRole("button", { name: "1 invitation waiting in notifications →" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(COPY.openNotificationsFailed);
   });
 
   it("renders an owner-written name as inert text", async () => {

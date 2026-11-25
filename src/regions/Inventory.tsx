@@ -3,13 +3,13 @@
 // never from this frame's state, so the panel and the main pane always agree.
 //
 // Invitations are events and live in notifications: this panel points at them with one
-// line and never lists them.
-import { useId, useState, type KeyboardEvent } from "react";
-import { navigateSpaces, useInvites, useSpacesMode, type SpacesTarget } from "@immediately-run/sdk";
+// line and never lists them. Creating a space is the main pane's door; this panel learns
+// of the new space when the host's route selects it and the list does not have it.
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useInvites, useSpacesMode } from "@immediately-run/sdk";
 import { COPY } from "../data/copy";
 import { useSpaceList } from "../hooks/useSpaceList";
-import { activeOption, inventoryItems, inventoryRow, inviteLine, nextActiveIndex } from "../lib/inventory";
-import CreateSpaceDoor from "../components/CreateSpaceDoor";
+import { activeOption, inventoryRow, inviteLine, nextActiveIndex, shouldRelist, sortInventory } from "../lib/inventory";
 import SpaceRow from "../components/SpaceRow";
 import "./Inventory.css";
 
@@ -21,36 +21,41 @@ export default function Inventory() {
   const selectedId = useSpacesMode()?.route.spaceId ?? null;
   const baseId = useId();
   const [active, setActive] = useState<number | null>(null);
+  // The active option is marked only while the listbox has focus; otherwise hover alone
+  // shows a row's Open pill.
+  const [focused, setFocused] = useState(false);
+  const { state, reload, navigate } = list;
 
-  // A refusal is the host's answer, not a crash: log it and say so in the live region.
-  const navigate = (target: SpacesTarget) => {
-    navigateSpaces(target).catch((e: unknown) => {
-      console.error("space-manager: navigateSpaces refused", e);
-      list.announce(COPY.openFailed);
-    });
-  };
-  const go = (spaceId: string) => navigate({ spaceId, activity: "spaces" });
+  const relistedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!shouldRelist(state, selectedId, relistedFor.current)) return;
+    relistedFor.current = selectedId;
+    const run = async () => {
+      await reload();
+    };
+    void run();
+  }, [state, selectedId, reload]);
 
-  const { state } = list;
+  const go = (spaceId: string) => navigate({ spaceId, activity: "spaces" }, COPY.openFailed);
+
   if (state.status === "auth-required") return null;
   if (state.status === "refused") return <p className="inv-refused">{COPY.listRefused}</p>;
 
-  const spaces = state.status === "ready" ? state.spaces : [];
-  const items = inventoryItems(spaces, list.pendingKind);
-  const activeIndex = activeOption(items, selectedId, active);
+  const spaces = state.status === "ready" ? sortInventory(state.spaces) : [];
+  const activeIndex = activeOption(spaces, selectedId, active);
   const optionId = (i: number) => `${baseId}-opt-${i}`;
   const pointer = inviteLine(invites.length);
 
   const onKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
     if (e.key === "Enter") {
-      const item = items[activeIndex];
-      if (item && !item.pending) {
+      const space = spaces[activeIndex];
+      if (space) {
         e.preventDefault();
-        go(item.space.spaceId);
+        go(space.spaceId);
       }
       return;
     }
-    const next = nextActiveIndex(e.key, activeIndex, items.length);
+    const next = nextActiveIndex(e.key, activeIndex, spaces.length);
     if (next === null) return;
     e.preventDefault();
     setActive(next);
@@ -75,14 +80,9 @@ export default function Inventory() {
 
       {state.status === "failed" && <p className="inv-msg">{COPY.listFailed}</p>}
 
-      {state.status === "ready" && spaces.length === 0 && (
-        <div className="inv-empty">
-          <p className="inv-msg">{COPY.empty}</p>
-          <CreateSpaceDoor busy={list.pendingKind !== null} onCreate={(kind) => void list.create(kind)} />
-        </div>
-      )}
+      {state.status === "ready" && spaces.length === 0 && <p className="inv-msg">{COPY.empty}</p>}
 
-      {items.length > 0 && (
+      {spaces.length > 0 && (
         <ul
           className="inv-list"
           role="listbox"
@@ -90,18 +90,19 @@ export default function Inventory() {
           aria-labelledby={`${baseId}-h`}
           aria-activedescendant={optionId(activeIndex)}
           onKeyDown={onKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
         >
-          {items.map((item, i) => (
+          {spaces.map((space, i) => (
             <SpaceRow
-              key={item.space.spaceId}
+              key={space.spaceId}
               optionId={optionId(i)}
-              row={inventoryRow(item.space)}
-              selected={item.space.spaceId === selectedId}
-              active={i === activeIndex}
-              pending={item.pending}
+              row={inventoryRow(space)}
+              selected={space.spaceId === selectedId}
+              active={focused && i === activeIndex}
               onOpen={() => {
                 setActive(i);
-                go(item.space.spaceId);
+                go(space.spaceId);
               }}
             />
           ))}
@@ -109,7 +110,7 @@ export default function Inventory() {
       )}
 
       {pointer && (
-        <button type="button" className="inv-invites" onClick={() => navigate({ destination: "notifications" })}>
+        <button type="button" className="inv-invites" onClick={() => navigate({ destination: "notifications" }, COPY.openNotificationsFailed)}>
           {pointer}
         </button>
       )}
